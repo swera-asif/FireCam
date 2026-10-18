@@ -4,17 +4,23 @@ Responsive product website and account-protected monitoring workspace.
 
 Website: https://swera-asif.github.io/FireCam/
 
-## GitHub Pages
+## Hosting layout
 
-Publish the `main` branch's `/docs` folder in Settings → Pages. The prepared site supports Google and email/password authentication through Firebase. **Authentication is not active until a Firebase project is configured.** Until then, login is disabled and the dashboard remains inaccessible.
+| Part | Where | What it does |
+| --- | --- | --- |
+| Public product site | GitHub Pages (`main` → `/docs`) | Landing page, proposal, FAQs. Static only. |
+| Account portal | Vercel (`public/` + `api/index.js`) | Email/password registration, sign-in, private dashboard, PostgreSQL records. |
+| Local app | `npm start` | Same interface with a Node.js/SQLite server on `http://localhost:4173`. |
 
-Follow [Firebase setup](docs/FIREBASE-SETUP.md). After changing the source or Firebase configuration, run:
+Sign-in on the Pages site is disabled until the Vercel portal is deployed and its URL is set in `github/portal-config.js`. Follow [Vercel setup](docs/VERCEL-SETUP.md).
+
+After changing the source or the portal URL, run:
 
 ```
-node scripts/build-github.mjs
+npm run build:github
 ```
 
-Firebase configuration belongs in `github/firebase-config.js`. Publish `firestore.rules` to enforce account isolation. Never commit private keys, service-account JSON, `.env`, or databases.
+and commit `docs/`. Never commit `DATABASE_URL`, `.env`, or databases.
 
 ## Local application
 
@@ -25,12 +31,12 @@ npm run check
 npm test
 ```
 
-The `worker/` and `drizzle/` sources retain the separate Sites deployment implementation. GitHub Pages uses the Firebase adapter in `github/`; it does not run a Node or Worker server.
+The `worker/` and `drizzle/` sources retain the earlier Sites deployment implementation and are not used by Pages or Vercel.
 
 ## Included
 
-Responsive product/proposal pages, cameras, floor plans, contacts, simulated alerts, export, settings and provided FireCam logo. Automated fire detection, physical sensor telemetry, emergency dispatch, and outbound notifications are not connected. Manual alerts are explicitly simulated.
+Responsive product/proposal pages, cameras, floor plans, contacts, simulated alerts, export, settings and the provided FireCam logo. Automated fire detection, physical sensor telemetry, emergency dispatch, and outbound notifications are not connected. Manual alerts are explicitly simulated.
 
 ## Validation
 
-Local API and hosted Worker authentication tests pass. GitHub Pages path checks and the disabled-auth state are checked locally. Live Google/email registration and Firestore rule enforcement must be verified after Firebase setup.
+Local API tests pass (`npm test`). The GitHub Pages build is checked by `tests/github-smoke.mjs` (needs `FIRECAM_DOM_MODULE` pointing at linkedom). Live registration, sign-out, auth-guard redirects and account isolation must be verified on the deployed Vercel portal after setup.

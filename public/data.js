@@ -15,7 +15,7 @@ export async function api(path,method='GET',body){
 }
 export async function init(){
  try{sessionStorage.removeItem('firecam-mode');localStorage.removeItem('firecam-demo-v2');}catch{}
- try{const health=await api('/health');state.backend=health.service==='firecam';state.authMode=health.authMode||'local';state.signedIn=!!health.signedIn;state.realtime=health.realtime||'sse';}catch{state.backend=false;}
+ try{const health=await api('/health');state.backend=health.service==='firecam'&&health.ready!==false;state.authMode=health.authMode||'local';state.signedIn=!!health.signedIn;state.realtime=health.realtime||'sse';}catch{state.backend=false;}
  if(state.backend)try{await refresh();}catch{}
 }
 export async function refresh(){const result=await api('/bootstrap');state.data=result;state.mode='account';state.signedIn=true;state.registrationRequired=false;state.lastSync=new Date();state.connected=true;return result;}

@@ -12,6 +12,12 @@
     "dev": "node --watch server.mjs",
     "test": "node --test tests/server.test.mjs tests/auth.test.mjs",
     "check": "node --check server.mjs && node --check worker/index.js && node --check public/app.js && node --check public/data.js && node --check public/sw.js",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "build:github": "node scripts/build-github.mjs",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
   }
 }
