@@ -1,2 +1,2 @@
-// Set after the Vercel portal has been deployed and its account service verified.
-export const portalUrl = null;
+// Vercel account portal (project firecam-portal, team sw-era). No trailing slash.
+export const portalUrl = 'https://firecam-portal.vercel.app';
