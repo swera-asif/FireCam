@@ -2,25 +2,15 @@
 
 Responsive product website and account-protected monitoring workspace.
 
-Website: https://swera-asif.github.io/FireCam/
+**Site: https://firecam-portal.vercel.app**
 
-## Hosting layout
+## Hosting
 
-| Part | Where | What it does |
-| --- | --- | --- |
-| Public product site | GitHub Pages (`main` → `/docs`) | Landing page, proposal, FAQs. Static only. |
-| Account portal | Vercel (`public/` + `api/index.js`) | Email/password registration, sign-in, private dashboard, PostgreSQL records. |
-| Local app | `npm start` | Same interface with a Node.js/SQLite server on `http://localhost:4173`. |
+The whole site (landing page, proposal, registration, sign-in, dashboard and the account API) runs on Vercel, project `firecam-portal` in team `sw-era`, deployed from `main`. Vercel serves `public/` together with `api/index.js`; workspace records live in a Neon PostgreSQL database (`DATABASE_URL`). See [Vercel setup](docs-src/VERCEL-SETUP.md).
 
-Sign-in on the Pages site is disabled until the Vercel portal is deployed and its URL is set in `github/portal-config.js`. Follow [Vercel setup](docs/VERCEL-SETUP.md).
+`swera-asif.github.io/FireCam` only forwards to the site. `npm run build:github` regenerates that redirect in `docs/` from the URL in `github/portal-config.js`; commit `docs/` after running it.
 
-After changing the source or the portal URL, run:
-
-```
-npm run build:github
-```
-
-and commit `docs/`. Never commit `DATABASE_URL`, `.env`, or databases.
+Never commit `DATABASE_URL`, `.env`, or databases.
 
 ## Local application
 
@@ -31,7 +21,7 @@ npm run check
 npm test
 ```
 
-The `worker/` and `drizzle/` sources retain the earlier Sites deployment implementation and are not used by Pages or Vercel.
+The `worker/` and `drizzle/` sources retain the earlier Sites deployment implementation and are not used.
 
 ## Included
 
@@ -39,4 +29,4 @@ Responsive product/proposal pages, cameras, floor plans, contacts, simulated ale
 
 ## Validation
 
-Local API tests pass (`npm test`). The GitHub Pages build is checked by `tests/github-smoke.mjs` (needs `FIRECAM_DOM_MODULE` pointing at linkedom). Live registration, sign-out, auth-guard redirects and account isolation must be verified on the deployed Vercel portal after setup.
+Local API tests pass (`npm test`). `node tests/github-smoke.mjs` checks the Pages redirect. Live registration, sign-in, the auth guard and the dashboard were verified on the deployed site.
