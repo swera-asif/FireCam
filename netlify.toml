@@ -1,8 +1,8 @@
-[build]
+﻿[build]
   base = "showcase"
   command = "npm run build"
-  publish = "showcase/dist"
-  functions = "showcase/netlify/functions"
+  publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "24"

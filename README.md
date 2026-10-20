@@ -1,4 +1,4 @@
-# FireCam
+﻿# FireCam
 
 A development showcase for a home fire-safety camera concept: product site, registration, a demo workspace with replayable incident scenarios, and a detection lab.
 
@@ -33,7 +33,7 @@ On `localhost` the workspace opens without login (Netlify Identity only exists o
 ## Deploy
 
 ```
-npx netlify-cli deploy --prod --site <site-id>
+npx netlify-cli deploy --prod --site <site-id> --dir showcase/dist --functions showcase/netlify/functions
 ```
 
 Netlify builds `showcase/` using `netlify.toml`. Never commit API keys, `.env` files or tokens.
