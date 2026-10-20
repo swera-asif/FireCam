@@ -128,6 +128,19 @@ test('AI boundary blocks anonymous, cross-origin, malformed and oversized reques
   assert.equal(calls,0);
   const ok=await handle(req(),async()=>({id:'u'}),run);assert.equal(ok.status,200);assert.match(ok.headers.get('cache-control'),/no-store/);
 });
+test('flame cue needs a warm region where only part of it flickers',()=>{
+  const mixed=(a,b,n)=>new Uint8ClampedArray(Array.from({length:100},(_,i)=>i<n?a:b).flat());
+  const still=frame(240,130,35);
+  assert.equal(inspectFrame(still,still).cue,false);
+  assert.ok(inspectFrame(mixed([240,130,35,255],[240,130,35,255],100),mixed([200,90,20,255],[240,130,35,255],10)).cue);
+});
+test('provider rejection explains the upstream reason without leaking the key or image',async()=>{
+  const body={...request,provider:'omniroute',model:'gh/gpt-4.1',billingConfirmed:true,baseUrl:'https://gateway.example.com/v1'};
+  const fetcher=async(url,init={})=>init.method==='POST'?Response.json({error:{message:`Model gh/gpt-4.1 does not support image input (key ${request.key}, ${image})`}},{status:400}):Response.json(direct.omniroute.models);
+  const error=await runProvider(body,fetcher).catch(e=>e);
+  assert.match(error.message,/HTTP 400: Model gh\/gpt-4\.1 does not support image input/);
+  assert.doesNotMatch(error.message,new RegExp(request.key));assert.doesNotMatch(error.message,/base64/);
+});
 test('unexpected provider errors cannot leak keys to clients',async()=>{
   const r=await handle(req(),async()=>({id:'u'}),()=>{throw Error('secret-api-key-and-image');});
   assert.equal(r.status,502);assert.doesNotMatch(await r.text(),/secret-api-key/);
