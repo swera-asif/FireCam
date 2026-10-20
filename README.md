@@ -1,32 +1,43 @@
 # FireCam
 
-Responsive product website and account-protected monitoring workspace.
+A development showcase for a home fire-safety camera concept: product site, registration, a demo workspace with replayable incident scenarios, and a detection lab.
 
-**Site: https://firecam-portal.vercel.app**
+**Site: https://firecam-showcase.netlify.app**
 
-## Hosting
+## How it works
 
-The whole site (landing page, proposal, registration, sign-in, dashboard and the account API) runs on Vercel, project `firecam-portal` in team `sw-era`, deployed from `main`. Vercel serves `public/` together with `api/index.js`; workspace records live in a Neon PostgreSQL database (`DATABASE_URL`). See [Vercel setup](docs-src/VERCEL-SETUP.md).
+- **Hosting:** Netlify (`netlify.toml`, site `firecam-showcase`). The static app is built from [`showcase/`](showcase/); one Netlify Function handles optional AI image review.
+- **Accounts:** Netlify Identity (email and password, email confirmation required). Visitors register first, then sign in to open the demo dashboard. No separate database is needed.
+- **Demo data:** sample incidents, contacts and preferences are stored only in the visitor's own browser (localStorage).
+- **GitHub:** this repository. `swera-asif.github.io/FireCam` only forwards to the Netlify site; `npm run build:github` regenerates that redirect in `docs/` from the URL in `github/portal-config.js`.
 
-`swera-asif.github.io/FireCam` only forwards to the site. `npm run build:github` regenerates that redirect in `docs/` from the URL in `github/portal-config.js`; commit `docs/` after running it.
+## Detection lab
 
-Never commit `DATABASE_URL`, `.env`, or databases.
+1. **Local image rules** (default): colour-and-motion checks on a camera frame or an uploaded image. No AI and no API key.
+2. **Optional AI review:** one image per request to OpenRouter (free `:free` vision models by default) or Google Gemini, using the visitor's own API key. Keys are kept in page memory only and are never stored or committed. A chat subscription (ChatGPT, Claude, Gemini) does not provide API access.
 
-## Local application
+Neither is a validated fire detector. No detected cue means safety is unknown. Physical alarms must stay in place.
 
-Requires Node.js 24+. Run `npm start`, then open http://localhost:4173. The local Node/SQLite application uses username/password accounts and serves `public/`.
+## Develop
+
+Requires Node.js 24+.
 
 ```
-npm run check
-npm test
+npm --prefix showcase install
+npm start          # builds, then serves http://127.0.0.1:4180
+npm test           # showcase tests
 ```
 
-The `worker/` and `drizzle/` sources retain the earlier Sites deployment implementation and are not used.
+On `localhost` the workspace opens without login (Netlify Identity only exists on the deployed site). On the deployed site the dashboard requires registration.
 
-## Included
+## Deploy
 
-Responsive product/proposal pages, cameras, floor plans, contacts, simulated alerts, export, settings and the provided FireCam logo. Automated fire detection, physical sensor telemetry, emergency dispatch, and outbound notifications are not connected. Manual alerts are explicitly simulated.
+```
+npx netlify-cli deploy --prod --site <site-id>
+```
 
-## Validation
+Netlify builds `showcase/` using `netlify.toml`. Never commit API keys, `.env` files or tokens.
 
-Local API tests pass (`npm test`). `node tests/github-smoke.mjs` checks the Pages redirect. Live registration, sign-in, the auth guard and the dashboard were verified on the deployed site.
+## Scope
+
+Automated fire detection, physical sensor telemetry, emergency dispatch and outbound notifications are **not** connected. All sensors, cameras, alerts and handoffs in the demo are simulated.
