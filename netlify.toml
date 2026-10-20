@@ -1,4 +1,4 @@
-﻿[build]
+[build]
   base = "showcase"
   command = "npm run build"
   publish = "dist"

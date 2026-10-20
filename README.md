@@ -1,4 +1,4 @@
-﻿# FireCam
+# FireCam
 
 A development showcase for a home fire-safety camera concept: product site, registration, a demo workspace with replayable incident scenarios, and a detection lab.
 

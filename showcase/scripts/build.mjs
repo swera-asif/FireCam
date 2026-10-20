@@ -1,4 +1,4 @@
-﻿import { build } from 'esbuild';
+import { build } from 'esbuild';
 import { mkdir, cp, copyFile } from 'node:fs/promises';
 await mkdir('dist/assets', { recursive: true });
 // Additive build: no source or previous deployment directories are deleted.
