@@ -1,9 +1,11 @@
-# Implementation and reference notes
+# Historical implementation and reference notes
+
+> This describes earlier prototypes, not the current Netlify application. Some referenced assets/configuration are no longer included. See [current architecture](ARCHITECTURE.md), [deployment](DEPLOYMENT.md) and the root README for the supported application.
 
 ## Inputs inspected
 
-- `C:\Users\MR. Beast\Downloads\FireCam Backend.zip`
-- `C:\Users\MR. Beast\Downloads\Frontend.mov` (2 minutes 38 seconds; a contact sheet sampled at 15-second intervals was reviewed).
+- `FireCam Backend.zip`
+- `Frontend.mov` (2 minutes 38 seconds; a contact sheet sampled at 15-second intervals was reviewed).
 - Awwwards design listings and mobile performance material (links in ASSETS.md and the site's proposal page).
 
 The video shows registration/login, a red sidebar, overview statistics, camera location tabs/search, a floor-plan canvas with floor creation and image import, alert history, profile settings, and emergency contacts. Those workflows shaped the information architecture. The new site replaces the visual treatment with warm neutral surfaces, charcoal/green structural colours, and an orange action colour.

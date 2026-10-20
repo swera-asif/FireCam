@@ -7,7 +7,13 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo FireCam will be available at http://localhost:4173
+call npm --prefix showcase ci
+if errorlevel 1 (
+  echo Dependency installation failed. Check your connection and try again.
+  pause
+  exit /b 1
+)
+echo FireCam will be available at http://127.0.0.1:4180
 echo Keep this window open. Press Ctrl+C to stop the server.
-node server.mjs
+call npm start
 if errorlevel 1 pause

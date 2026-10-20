@@ -1,43 +1,85 @@
+<p align="center"><img src="showcase/assets/firecam-logo.png" alt="FireCam" width="120"></p>
+
 # FireCam
 
-A development showcase for a home fire-safety camera concept: product site, registration, a demo workspace with replayable incident scenarios, and a detection lab.
+**A clearer view of a home incident, from the first alert to human review.**
 
-**Site: https://firecam-showcase.netlify.app**
+FireCam is an interactive fire-safety product showcase: a public product website, account access, a demo monitoring workspace, replayable incident scenarios and an experimental image review lab.
 
-## How it works
+[Open the live app](https://firecam-showcase.netlify.app/) · [Presentation walkthrough](docs-src/PRESENTATION.md) · [Architecture](docs-src/ARCHITECTURE.md) · [Deployment](docs-src/DEPLOYMENT.md)
 
-- **Hosting:** Netlify (`netlify.toml`, site `firecam-showcase`). The static app is built from [`showcase/`](showcase/); one Netlify Function handles optional AI image review.
-- **Accounts:** Netlify Identity (email and password, email confirmation required). Visitors register first, then sign in to open the demo dashboard. No separate database is needed.
-- **Demo data:** sample incidents, contacts and preferences are stored only in the visitor's own browser (localStorage).
-- **GitHub:** this repository. `swera-asif.github.io/FireCam` only forwards to the Netlify site; `npm run build:github` regenerates that redirect in `docs/` from the URL in `github/portal-config.js`.
+![FireCam checks](https://github.com/swera-asif/FireCam/actions/workflows/ci.yml/badge.svg)
 
-## Detection lab
+![FireCam concept residence — generated artwork, not a connected property](showcase/assets/hero.webp)
 
-1. **Local image rules** (default): colour-and-motion checks on a camera frame or an uploaded image. No AI and no API key.
-2. **Optional AI review:** one image per request to OpenRouter (free `:free` vision models by default) or Google Gemini, using the visitor's own API key. Keys are kept in page memory only and are never stored or committed. A chat subscription (ChatGPT, Claude, Gemini) does not provide API access.
+## Explore the project
 
-Neither is a validated fire detector. No detected cue means safety is unknown. Physical alarms must stay in place.
+Open the live site and select **Register**. Confirm your email, then sign in. Registration is the public entry point; there is no request-demo form. For a local presentation of the sample workspace, follow the setup below.
 
-## Develop
+| Area | What you can demonstrate |
+| --- | --- |
+| Product website | Product concept, proposed workflow and delivery scope |
+| Dashboard and scenarios | Suspected fire, likely false alarm and missing-evidence scenarios; step through or replay incident handling |
+| Cameras and floor plan | Search illustrative camera views and change sample device placement |
+| Alerts and contacts | Review sample incidents, export CSV and edit fictional contacts |
+| Voice workspace | Record, play and download local microphone audio; try local push-to-talk capture |
+| Detection lab | Inspect an image or camera frame with colour/motion rules; optionally request AI review |
+| Preferences | Change sample home details, theme and reset browser-local demo data |
 
-Requires Node.js 24+.
+**Project status:** a functional development showcase, not a production monitoring or certified fire-alarm system. Home sensors, remote cameras, incident assessments, notifications and monitoring-centre handoffs are simulated. No emergency calls or messages are sent. Local camera/microphone capture and explicitly requested provider reviews are real.
 
+## Run locally
+
+Requires **Node.js 24+** and npm. From a fresh clone:
+
+```sh
+git clone https://github.com/swera-asif/FireCam.git
+cd FireCam
+npm --prefix showcase ci
+npm start
 ```
-npm --prefix showcase install
-npm start          # builds, then serves http://127.0.0.1:4180
-npm test           # showcase tests
+
+Open **http://127.0.0.1:4180/#/dashboard**. On Windows, `Start-FireCam.cmd` installs dependencies, builds and starts the same showcase.
+
+The local server allows the sample workspace without managed login when Netlify Identity is unavailable. Identity and the AI function require a Netlify deployment; `npm start` does not emulate them.
+
+## Verify and build
+
+```sh
+npm run check                    # active showcase syntax checks
+npm test                         # behaviour and API tests with mocked providers
+npm run test:pages               # GitHub Pages redirect checks
+npm run build                    # clean dependency install and production build
 ```
 
-On `localhost` the workspace opens without login (Netlify Identity only exists on the deployed site). On the deployed site the dashboard requires registration.
+Output: `showcase/dist/`. GitHub Actions runs syntax, tests, build and redirect checks on pushes to `main` and pull requests. Camera permissions, email delivery and real provider access also need browser/account acceptance checks; automated tests do not prove these integrations work end to end.
 
-## Deploy
+## Hosting and data
 
-```
-npx netlify-cli deploy --prod --site <site-id> --dir showcase/dist --functions showcase/netlify/functions
-```
+- **Live app:** Netlify builds `showcase/` using [`netlify.toml`](netlify.toml). Production branch: `main`.
+- **Accounts:** Netlify Identity manages registration, confirmation, login and recovery.
+- **Demo records:** localStorage in the current browser, shared by accounts using that browser profile. These are not private cloud records.
+- **Media:** microphone recordings stay in memory until downloaded, refreshed or the tab closes. Camera images stay local unless sent for review.
+- **Optional AI:** a signed-in visitor supplies an OpenRouter or Gemini key. The key and selected image pass through the Netlify function to that provider. Keys stay in page memory and clear on leaving the lab. No project-owned API key is required.
+- **GitHub Pages:** only redirects to Netlify; it is not a second app or authentication service.
 
-Netlify builds `showcase/` using `netlify.toml`. Never commit API keys, `.env` files or tokens.
+## Repository map
 
-## Scope
+| Path | Purpose |
+| --- | --- |
+| [`showcase/src/`](showcase/src/) | Active UI, state model, image rules and media capture |
+| [`showcase/assets/`](showcase/assets/) | Logo, artwork, sample interiors and fonts |
+| [`showcase/netlify/`](showcase/netlify/) | Authenticated AI function and provider adapters |
+| [`showcase/tests/`](showcase/tests/) | Current application tests |
+| [`docs-src/`](docs-src/) | Architecture, presentation, deployment and asset notes |
+| [`docs/`](docs/) and [`github/`](github/) | Pages redirect output and URL configuration |
+| [`scripts/`](scripts/) | Verification and redirect tooling; historical Worker builder |
+| `server.mjs`, `worker/`, `lib/`, `drizzle/`, `migrations/`, older `tests/` | Earlier backends and tests; excluded from the live build |
 
-Automated fire detection, physical sensor telemetry, emergency dispatch and outbound notifications are **not** connected. All sensors, cameras, alerts and handoffs in the demo are simulated.
+Start application work in **`showcase/`**. [Historical implementation notes](docs-src/IMPLEMENTATION.md) describe prior prototypes; their setup and storage models do not describe the live site.
+
+## Scope and next steps
+
+Next stages are physical device integration, validated detection, account-isolated cloud history, notification delivery, monitoring-centre integration and device/browser acceptance testing. A successful demo scenario does not imply these integrations exist.
+
+See [asset credits](docs-src/ASSETS.md) for artwork and font/photo attribution. No general source-code licence is declared; the font licence applies to its font files.

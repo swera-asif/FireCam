@@ -9,8 +9,10 @@
   },
   "scripts": {
     "start": "npm --prefix showcase run build && npm --prefix showcase run dev",
-    "build": "npm --prefix showcase install && npm --prefix showcase run build",
+    "build": "npm --prefix showcase ci && npm --prefix showcase run build",
     "test": "npm --prefix showcase test",
-    "build:github": "node scripts/build-github.mjs"
+    "build:github": "node scripts/build-github.mjs",
+    "check": "node scripts/check.mjs",
+    "test:pages": "node tests/github-smoke.mjs"
   }
 }

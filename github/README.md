@@ -1,36 +1,14 @@
-# FireCam
+# GitHub Pages redirect
 
-Responsive product website and account-protected monitoring workspace.
+The application runs at [firecam-showcase.netlify.app](https://firecam-showcase.netlify.app/). GitHub Pages only forwards visitors there, including hash routes.
 
-Website: https://swera-asif.github.io/FireCam/
+`portal-config.js` supplies the destination. From the repository root:
 
-## GitHub Pages
-
-Publish the `main` branch's `/docs` folder in Settings → Pages. The prepared site supports Google and email/password authentication through Firebase. **Authentication is not active until a Firebase project is configured.** Until then, login is disabled and the dashboard remains inaccessible.
-
-Follow [Firebase setup](docs/FIREBASE-SETUP.md). After changing the source or Firebase configuration, run:
-
-```
-node scripts/build-github.mjs
+```sh
+npm run build:github
+npm run test:pages
 ```
 
-Firebase configuration belongs in `github/firebase-config.js`. Publish `firestore.rules` to enforce account isolation. Never commit private keys, service-account JSON, `.env`, or databases.
+If Pages is enabled, publish `main` → `/docs`. That directory contains the redirect pages and a retiring service worker for old installations.
 
-## Local application
-
-Requires Node.js 24+. Run `npm start`, then open http://localhost:4173. The local Node/SQLite application uses username/password accounts and serves `public/`.
-
-```
-npm run check
-npm test
-```
-
-The `worker/` and `drizzle/` sources retain the separate Sites deployment implementation. GitHub Pages uses the Firebase adapter in `github/`; it does not run a Node or Worker server.
-
-## Included
-
-Responsive product/proposal pages, cameras, floor plans, contacts, simulated alerts, export, settings and provided FireCam logo. Automated fire detection, physical sensor telemetry, emergency dispatch, and outbound notifications are not connected. Manual alerts are explicitly simulated.
-
-## Validation
-
-Local API and hosted Worker authentication tests pass. GitHub Pages path checks and the disabled-auth state are checked locally. Live Google/email registration and Firestore rule enforcement must be verified after Firebase setup.
+`data.js` is a historical adapter, not bundled or deployed. Firebase, Firestore and earlier Sites/Node backends are not used by the Netlify showcase. Follow the [current deployment guide](../docs-src/DEPLOYMENT.md).

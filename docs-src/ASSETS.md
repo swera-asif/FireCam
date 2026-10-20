@@ -2,7 +2,7 @@
 
 ## Original hero image
 
-- File: `dist/assets/hero.webp`
+- File: `showcase/assets/hero.webp`
 - Generated with the built-in Image Generation tool; optimized to WebP for this site.
 - It is a concept residence, not a customer property, connected camera, or actual monitoring result.
 - Final generation prompt:
@@ -21,8 +21,8 @@ Images are served locally as optimized WebP files. Photography does not imply af
 
 ## Type and graphics
 
-- Manrope, self-hosted from Google Fonts, weights 400–800. SIL Open Font License; see `dist/assets/OFL.txt`.
-- The FireCam logo is the user-supplied `Unknown-removebg-preview.png`, copied unchanged to `dist/assets/firecam-logo.png`. App icons are proportionally resized, centered versions with transparent padding. Interface icons, floor-plan graphics, and decorative device frames were authored as SVG/HTML/CSS for this project.
+- Manrope, self-hosted from Google Fonts, weights 400–800. SIL Open Font License; see `showcase/assets/OFL.txt`.
+- The FireCam logo is the user-supplied `Unknown-removebg-preview.png`, copied unchanged to `showcase/assets/firecam-logo.png`. App icons are proportionally resized, centered versions with transparent padding. Interface icons, floor-plan graphics, and decorative device frames were authored as SVG/HTML/CSS for this project.
 
 ## Design research
 
