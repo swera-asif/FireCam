@@ -1,23 +1,16 @@
 {
   "name": "firecam",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "FireCam responsive product website and monitoring workspace",
+  "description": "FireCam development showcase, hosted on Netlify",
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node server.mjs",
-    "dev": "node --watch server.mjs",
-    "test": "node --test tests/server.test.mjs tests/auth.test.mjs",
-    "check": "node --check server.mjs && node --check worker/index.js && node --check public/app.js && node --check public/data.js && node --check public/sw.js",
-    "build": "node scripts/build.mjs",
-    "build:vercel": "node scripts/build-vercel.mjs",
-    "build:github": "node scripts/build-github.mjs",
-    "db:migrate": "node scripts/migrate.mjs"
-  },
-  "dependencies": {
-    "pg": "^8.16.3"
+    "start": "npm --prefix showcase run build && npm --prefix showcase run dev",
+    "build": "npm --prefix showcase run build",
+    "test": "npm --prefix showcase test",
+    "build:github": "node scripts/build-github.mjs"
   }
 }

@@ -1,4 +1,4 @@
-// GitHub Pages now only forwards to the single site URL. The full site (pages, sign-in, dashboard, API) runs on Vercel.
+﻿// GitHub Pages now only forwards to the single site URL. The full site (pages, sign-in, dashboard, AI function) runs on Netlify.
 import {rm,mkdir,writeFile} from 'node:fs/promises';
 import {portalUrl} from '../github/portal-config.js';
 if(!portalUrl)throw Error('Set portalUrl in github/portal-config.js first.');
