@@ -78,6 +78,46 @@ test('Gemini uses stateless image interaction with output bound',async()=>{
     ()=>({interactions:{create:async body=>{sent=body;return {output_text:'Uncertain.'};}}}));
   assert.equal(r.text,'Uncertain.');assert.equal(sent.store,false);assert.equal(sent.input[1].type,'image');assert.equal(sent.generation_config.max_output_tokens,800);
 });
+const vision=(id,extra={})=>({id,...extra});
+const direct={
+  anthropic:{models:{data:[{id:'claude-test-4',display_name:'Claude Test'}]},model:'claude-test-4',url:'https://api.anthropic.com/v1/messages',reply:{content:[{type:'text',text:'Smoke-like haze. Review required.'}]}},
+  openai:{models:{data:[vision('gpt-5-mini'),vision('gpt-4o-audio-preview'),vision('text-embedding-3-small')]},model:'gpt-5-mini',url:'https://api.openai.com/v1/chat/completions',tokens:'max_completion_tokens',hidden:['gpt-4o-audio-preview','text-embedding-3-small']},
+  xai:{models:{data:[vision('grok-4'),vision('grok-2-image-1212'),vision('grok-3-mini')]},model:'grok-4',url:'https://api.x.ai/v1/chat/completions',tokens:'max_tokens',hidden:['grok-2-image-1212','grok-3-mini']},
+  groq:{models:{data:[vision('meta-llama/llama-4-scout-17b-16e-instruct'),vision('llama-3.3-70b-versatile')]},model:'meta-llama/llama-4-scout-17b-16e-instruct',url:'https://api.groq.com/openai/v1/chat/completions',tokens:'max_completion_tokens',hidden:['llama-3.3-70b-versatile']},
+  mistral:{models:{data:[vision('pixtral-large-latest',{capabilities:{vision:true}}),vision('pixtral-large-latest',{capabilities:{vision:true}}),vision('codestral-latest',{capabilities:{vision:false}})]},model:'pixtral-large-latest',url:'https://api.mistral.ai/v1/chat/completions',tokens:'max_tokens',stringImage:true,hidden:['codestral-latest']},
+  omniroute:{models:{data:[vision('gh/gpt-4.1'),vision('kr/text-only',{architecture:{input_modalities:['text']}})]},model:'gh/gpt-4.1',url:'https://gateway.example.com/omni/v1/chat/completions',tokens:'max_tokens',baseUrl:'https://gateway.example.com/omni/',hidden:['kr/text-only']}
+};
+test('each direct provider lists only vision models and sends a correctly shaped image review',async()=>{
+  for(const [provider,c] of Object.entries(direct)){
+    const calls=[];
+    const fetcher=async(url,init={})=>{calls.push({url,init});return Response.json(init.method==='POST'?(c.reply||{choices:[{message:{content:'Flame-like cue. Review required.'}}]}):c.models);};
+    const body={...request,provider,model:c.model,billingConfirmed:true,baseUrl:c.baseUrl};
+    const listed=(await runProvider({...body,action:'models'},fetcher)).models.map(m=>m.id);
+    assert.deepEqual(listed,[c.model],provider);assert.ok(!listed.some(id=>c.hidden?.includes(id)));
+    const r=await runProvider(body,fetcher);
+    assert.match(r.text,/review required/i,provider);assert.equal(r.provider,provider);
+    const sent=calls.at(-1),payload=JSON.parse(sent.init.body);
+    assert.equal(sent.url,c.url,provider);assert.equal(payload.model,c.model);
+    if(provider==='anthropic'){
+      assert.equal(sent.init.headers['x-api-key'],request.key);assert.equal(sent.init.headers['anthropic-version'],'2023-06-01');
+      assert.equal(payload.max_tokens,800);assert.equal(payload.messages[0].content[0].source.media_type,'image/jpeg');
+    }else{
+      assert.equal(sent.init.headers.Authorization,`Bearer ${request.key}`);assert.equal(sent.init.redirect,'error');
+      assert.ok(payload[c.tokens]>=800,provider);
+      const part=payload.messages[0].content[1];assert.equal(part.type,'image_url');
+      assert.equal(c.stringImage?part.image_url:part.image_url.url,image,provider);
+    }
+  }
+});
+test('non-OpenRouter providers always require billing confirmation, even with free-only checked',()=>{
+  for(const provider of Object.keys(direct))assert.throws(()=>validate({...request,provider,baseUrl:direct[provider].baseUrl}),/billing/);
+});
+test('OmniRoute gateway must be a public HTTPS hostname',()=>{
+  const omni={...request,provider:'omniroute',billingConfirmed:true};
+  for(const baseUrl of [undefined,'http://gateway.example.com/v1','https://localhost:20128/v1','https://127.0.0.1/v1','https://[::1]/v1','https://gateway.example.com:20128/v1','https://metadata.google.internal/v1','https://user:pw@gateway.example.com/v1','https://router/v1'])
+    assert.throws(()=>validate({...omni,baseUrl}),undefined,String(baseUrl));
+  assert.doesNotThrow(()=>validate({...omni,baseUrl:'https://omniroute.example.com/v1'}));
+});
 const req=(body=request,origin='https://firecam.example',method='POST')=>new Request('https://firecam.example/.netlify/functions/ai',{method,headers:{origin,'content-type':'application/json'},...(method==='POST'?{body:JSON.stringify(body)}:{})});
 test('AI boundary blocks anonymous, cross-origin, malformed and oversized requests',async()=>{
   let calls=0;const run=async()=>{calls++;return {text:'ok'};};
