@@ -60,7 +60,7 @@ Output: `showcase/dist/`. GitHub Actions runs syntax, tests, build and redirect 
 - **Accounts:** Netlify Identity manages registration, confirmation, login and recovery.
 - **Demo records:** localStorage in the current browser, shared by accounts using that browser profile. These are not private cloud records.
 - **Media:** microphone recordings stay in memory until downloaded, refreshed or the tab closes. Camera images stay local unless sent for review.
-- **Optional AI:** a signed-in visitor supplies an OpenRouter or Gemini key. The key and selected image pass through the Netlify function to that provider. Keys stay in page memory and clear on leaving the lab. No project-owned API key is required.
+- **Optional AI:** a signed-in visitor supplies their own OpenRouter, Gemini, Anthropic, OpenAI, xAI, Groq or Mistral key, or a public HTTPS OmniRoute gateway URL and key. The key and selected image pass through the Netlify function to that provider. Keys stay in page memory and clear on leaving the lab. No project-owned API key is required.
 - **GitHub Pages:** only redirects to Netlify; it is not a second app or authentication service.
 
 ## Repository map

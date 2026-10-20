@@ -11,7 +11,8 @@ flowchart TD
   Browser <--> Storage[Browser-local sample records]
   Browser --> Media[Local camera and microphone]
   Browser -->|Authenticated request with visitor key and consent| Function[Netlify AI function]
-  Function --> Provider[OpenRouter or Gemini]
+  Function --> Provider[OpenRouter, Gemini, Claude, OpenAI, Grok, Groq or Mistral]
+  Function --> Gateway[Visitor's OmniRoute gateway over public HTTPS]
 ```
 
 ## Source responsibilities
