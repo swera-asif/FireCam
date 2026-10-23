@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FireCam</string>
+    <string name="title_activity_main">FireCam</string>
+    <string name="package_name">app.firecam.alert</string>
+    <string name="custom_url_scheme">app.firecam.alert</string>
+</resources>

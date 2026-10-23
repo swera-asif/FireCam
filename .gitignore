@@ -11,3 +11,6 @@ test-results/
 dist/
 
 .netlify/
+
+# Built Android packages (large binaries; attach to a GitHub release instead)
+dist-android/

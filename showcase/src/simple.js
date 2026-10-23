@@ -5,6 +5,7 @@ import {normalizePhone,phonePattern,countries} from './model.js';
 import {AlarmListener,Siren,vibrate,stopVibration,speak,stopSpeaking,notify,playAlarmPattern} from './alarm.js';
 import {createAlert,closeAlert,addStep,Escalation,alertSentence,formatWhen,daysSince,homeStatus,fireService,fireServices,telLink,smsLink} from './alerts.js';
 import {t,setLanguage,language,locale,languages} from './i18n.js';
+import {isNative,nativeListener,nativeAlarm,onResume} from './native.js';
 
 export function createSimple(ctx){
   const {getState,persist,render,toast,dialog,closeDialog,icon,button,esc,confirmation,go,onAlert=()=>{},cloud=null,getUser=()=>null,isGuest=()=>false}=ctx;
@@ -14,14 +15,23 @@ export function createSimple(ctx){
   let wakeLock=null,siren=new Siren(),escalation=null,vibrateTimer=null,setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};
 
   // ---- Listening -------------------------------------------------------------------------
-  const listener=new AlarmListener({
+  const phoneRoom=()=>S().rooms.find(r=>r.source==='phone')?.name||S().preferences.home;
+  const listenerCallbacks={
     onStatus(s){listenState.status=s==='listening'?'on':s==='permission'?'permission':s==='lost'?'lost':'off';if(s==='lost')toast(t('home.listen.lost'));if(s!=='listening'&&s!=='permission')releaseWake();updateListenUI();},
     onLevel(l){listenState.level=l.level;listenState.tone=l.tone;const m=document.querySelector('#listen-level');if(m)m.style.width=`${Math.round(l.level*100)}%`;const b=document.querySelector('#listen-beeps');if(b)b.textContent=l.tone?'♪':l.beeps?'·'.repeat(Math.min(l.beeps,8)):'';},
-    onAlarm(result){const room=S().rooms.find(r=>r.source==='phone')?.name||S().preferences.home;raise({kind:result.kind,source:'sound',room});}
-  });
-  async function requestWake(){try{wakeLock=await navigator.wakeLock?.request('screen');wakeLock?.addEventListener('release',()=>{wakeLock=null;});}catch{}}
+    onAlarm(result){raise({kind:result.kind,source:'sound',room:phoneRoom()});}
+  };
+  // In the Android app a foreground service listens (and keeps listening with the screen off);
+  // on the web the AudioWorklet in alarm.js does the same job while the page is open.
+  const listener=isNative?nativeListener(listenerCallbacks):new AlarmListener(listenerCallbacks);
+  async function requestWake(){if(isNative)return;try{wakeLock=await navigator.wakeLock?.request('screen');wakeLock?.addEventListener('release',()=>{wakeLock=null;});}catch{}}
   function releaseWake(){try{wakeLock?.release();}catch{}wakeLock=null;}
-  async function startListening(){await listener.start();S().preferences.listen=true;persist();requestWake();render();}
+  async function startListening(){await listener.start(phoneRoom());S().preferences.listen=true;persist();requestWake();render();}
+  // An alarm the service detected while the web layer was asleep (app closed or screen off).
+  async function checkPendingAlarm(){
+    if(!isNative)return;
+    try{const p=await nativeAlarm.pending();if(p?.kind&&!activeAlert())raise({kind:p.kind,source:'sound',room:phoneRoom()});}catch{}
+  }
   function stopListening(){listener.stop();S().preferences.listen=false;persist();render();}
   function updateListenUI(){if(document.querySelector('#listen-card'))render();}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&listener.active&&!wakeLock)requestWake();});
@@ -45,12 +55,13 @@ export function createSimple(ctx){
   function startLocalAlarm(alert,{escalate}){
     const {kind,room}=alert;
     if(escalate){escalation=new Escalation(alert,{onStage(stage){persist();renderAlertScreen();onAlert(alert,'stage');if(stage==='family')notify('FireCam',t('alert.stage.family'));if(stage==='service'){speak(t('alert.stage.service'),languages[language()].speech);notify('FireCam',t('alert.stage.service'));}}}).start();}
+    if(isNative)nativeAlarm.clearNotification();
     siren.start();vibrate();clearInterval(vibrateTimer);vibrateTimer=setInterval(()=>vibrate(),2600);
     speak(t(kind==='test'?'alert.spoken.test':kind==='co'?'alert.spoken.co':'alert.spoken.smoke',{room}),languages[language()].speech);
     notify(t(kind==='test'?'alert.title.test':kind==='co'?'alert.title.co':kind==='practice'?'alert.title.practice':'alert.title.smoke',{room}),isReal(kind)?t('alert.heard'):t('alert.manual'));
     renderAlertScreen();render();
   }
-  function quiet(){siren.stop();stopVibration();clearInterval(vibrateTimer);vibrateTimer=null;stopSpeaking();}
+  function quiet(){siren.stop();stopVibration();clearInterval(vibrateTimer);vibrateTimer=null;stopSpeaking();if(isNative)nativeAlarm.clearNotification();}
   function finish(outcome){
     const alert=activeAlert();if(!alert)return;
     escalation?.stop();escalation=null;quiet();
@@ -178,7 +189,7 @@ export function createSimple(ctx){
     switch(action){
       case 'listen-start':await startListening();return true;
       case 'listen-stop':stopListening();return true;
-      case 'test-alerts':if(Notification?.permission==='default')await Notification.requestPermission().catch(()=>{});raise({kind:'test',source:'manual',room:state.rooms[0]?.name||state.preferences.home});return true;
+      case 'test-alerts':if(globalThis.Notification?.permission==='default')await Notification.requestPermission().catch(()=>{});raise({kind:'test',source:'manual',room:state.rooms[0]?.name||state.preferences.home});return true;
       case 'alert-open':renderAlertScreen();return true;
       case 'alert-false':finish('false');return true;
       case 'alert-safe':finish('safe');return true;
@@ -219,7 +230,7 @@ export function createSimple(ctx){
     switch(kind){
       case 'setup-1':
         if(setup.source==='url'){setup.url=values.url.trim();if(!/^https?:\/\//.test(setup.url))throw Error(t('setup.1.urlField'));}
-        else{try{await listener.start();state.preferences.listen=true;requestWake();}catch(e){toast(e.message);}if('Notification' in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{});}
+        else{try{await listener.start(setup.room||'');state.preferences.listen=true;requestWake();}catch(e){toast(e.message);}if(globalThis.Notification?.permission==='default')Notification.requestPermission().catch(()=>{});}
         setup.step=2;render();return true;
       case 'setup-2':setup.room=values.room.trim();if(!setup.room)throw Error(t('setup.2.field'));setup.step=3;render();return true;
       case 'setup-3':setup.name=values.name;setup.phone=values.phone;addPerson({name:values.name,phone:values.phone});addRoom({name:setup.room,source:setup.source,url:setup.url});state.setupDone=true;persist();setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};go('/home');return true;
@@ -238,8 +249,10 @@ export function createSimple(ctx){
   async function boot(){
     applyPreferences();
     const p=S().preferences;
-    if(p.listen&&S().setupDone&&!listener.active){try{await listener.start();requestWake();}catch{listenState.status='off';}render();}
+    if(p.listen&&S().setupDone&&!listener.active){try{await listener.start(phoneRoom());requestWake();}catch{listenState.status='off';}render();}
     renderAlertScreen();
+    await checkPendingAlarm();
+    onResume(()=>{checkPendingAlarm();render();});
   }
   document.addEventListener('change',async e=>{
     if(e.target.id!=='push-toggle'||!cloud)return;
@@ -248,7 +261,7 @@ export function createSimple(ctx){
     catch(err){pushOn=false;toast(err.message);}
     finally{box.checked=pushOn;box.disabled=false;}
   });
-  async function refreshPushState(){if(!cloud)return;try{pushOn=!!(await cloud.pushSubscription())&&Notification.permission==='granted';}catch{pushOn=false;}}
+  async function refreshPushState(){if(!cloud)return;try{pushOn=!!(await cloud.pushSubscription())&&(isNative||globalThis.Notification?.permission==='granted');}catch{pushOn=false;}}
   const tabs=[['home','tab.home','home'],['alerts','tab.alerts','fire'],['rooms','tab.rooms','floor'],['family','tab.family','users'],['settings','tab.settings','settings']];
   return {pages:{home,alerts,rooms,family,settings},setupPage,handleAction,handleSubmit,boot,applyPreferences,tabs,raise,finish,incoming,listener,activeAlert,t,refreshPushState,
     onRoute(view){if(view==='family')fillMembers();},

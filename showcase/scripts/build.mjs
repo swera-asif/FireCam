@@ -10,7 +10,8 @@ await copyFile('src/sw.js', 'dist/sw.js');
 const publicConfig = {
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
-  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || ''
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+  siteUrl: process.env.URL || process.env.SITE_URL || 'https://firecam-showcase.netlify.app'
 };
 const define = { __FIRECAM_CONFIG__: JSON.stringify(publicConfig) };
 await build({ entryPoints: ['src/app.js'], bundle: true, format: 'esm', outfile: 'dist/app.js', minify: true, target: 'es2022', define });

@@ -1,6 +1,7 @@
 import * as netlifyIdentity from '@netlify/identity';
 import {createCloud} from './cloud.js';
 import {pickDoc,applyDoc,mergeAlerts} from './sync.js';
+import {isNative,apiBase,onPushTap} from './native.js';
 import {loadState,saveState,initialState,scenarios,stages,makeIncident,advance,csv,normalizePhone,phonePattern,review,reviewActions} from './model.js';
 import {inspectFrame,CuePersistence} from './detector.js';
 import {Microphone,LocalCamera,canvasJPEG,loadImage} from './media.js';
@@ -22,7 +23,8 @@ const cloud=createCloud();
 let guest=false;try{guest=localStorage.getItem('firecam-guest')==='1';}catch{}
 function setGuest(on){guest=on;try{if(on)localStorage.setItem('firecam-guest','1');else localStorage.removeItem('firecam-guest');}catch{}}
 let synced=false,syncTimer=null,lastDoc='';
-const localDev=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+// The Android app's WebView also reports "localhost"; it must behave like the live site.
+const localDev=!isNative&&['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 let choice='fire',noResponse=true,activeId='',scenarioTimer=null,search='',filter='All',floor='Ground floor',historyFilter='All';
 let opener,toastTimer,playTimer,playSeconds=0;
 const recordings=[];
@@ -132,7 +134,7 @@ function authPage(){
   const intro=recovery?'Choose a new password for your account.':register?(cloud?'Free. Your account keeps your rooms and family in sync and lets family members get alerts on their own phones.':'Create your account to open FireCam.'):'Sign in to open FireCam.';
   const unavailable=!authReady?'<p role="status">Checking sign-in…</p>':!authSettings?`<div class="callout">${esc(authError||'Sign-in is not configured on this deployment.')}</div>`:'';
   const form=`<form data-form="${recovery?'recover':register?'register':'login'}">${!recovery?'<label class="field">Email<input name="email" type="email" autocomplete="email" required maxlength="200" inputmode="email"></label>':''}<label class="field">${recovery?'New password':'Password'}<input name="password" type="password" autocomplete="${register||recovery?'new-password':'current-password'}" minlength="${minLength}" maxlength="128" required></label>${register?`<small>Use at least ${minLength} characters. We will email you a link to confirm your account.</small>`:''}<div class="error" id="auth-error" role="alert"></div><p id="auth-notice" class="notice" role="status"></p><button class="primary big" ${!authSettings||register&&authSettings.disableSignup?'disabled':''}>${recovery?'Save new password':register?'Create free account':'Sign in'}</button></form>`;
-  const alternatives=recovery?'':`<div class="alt"><div class="row between"><a href="#/${register?'login':'register'}">${register?'Already have an account? Sign in':'New here? Create a free account'}</a>${button('Forgot password?','forgot','plain')}</div>${cloud&&authSettings?button(icon('arrow')+' Email me a sign-in link instead','magic','',"aria-describedby=\"auth-notice\""):''}${authSettings&&!cloud?Object.entries(authSettings.providers||{}).filter(([name,enabled])=>enabled&&name!=='email').map(([name])=>button('Continue with '+name,'oauth','',`data-id="${esc(name)}"`)).join(''):''}${button(icon('play')+' '+t('guest.try'),'guest','')}<small>${esc(t('account.guest'))}</small></div>`;
+  const alternatives=recovery?'':`<div class="alt"><div class="row between"><a href="#/${register?'login':'register'}">${register?'Already have an account? Sign in':'New here? Create a free account'}</a>${button('Forgot password?','forgot','plain')}</div>${cloud&&authSettings&&!isNative?button(icon('arrow')+' Email me a sign-in link instead','magic','',"aria-describedby=\"auth-notice\""):''}${authSettings&&!cloud?Object.entries(authSettings.providers||{}).filter(([name,enabled])=>enabled&&name!=='email').map(([name])=>button('Continue with '+name,'oauth','',`data-id="${esc(name)}"`)).join(''):''}${button(icon('play')+' '+t('guest.try'),'guest','')}<small>${esc(t('account.guest'))}</small></div>`;
   return `<header class="container public-header row between">${brand()}<a href="#/">← Back to home</a></header><main id="main" class="panel auth"><img class="auth-logo" src="/assets/firecam-logo.png" alt="" width="56" height="62">${user&&!recovery?signedIn:`<div class="eyebrow">WELCOME TO FIRECAM</div><h1>${recovery?'Set a new password.':register?'Make yourself at home.':'Good to see you.'}</h1><p class="muted">${intro}</p>${unavailable}${form}${alternatives}`}<div class="callout info">${esc(t('notice.long'))}</div></main>`;
 }
 const simple=createSimple({getState:()=>state,persist,render,toast,dialog,closeDialog,icon,button,esc,confirmation,go:hash=>{if(location.hash==='#'+hash)render();else location.hash=hash;},
@@ -177,7 +179,7 @@ function wirePTT(){
 async function providerRequest(body){
   if(aiController)throw Error('A provider request is already running.');
   const controller=new AbortController();aiController=controller;const timeout=setTimeout(()=>controller.abort(),45000);
-  try{const r=await fetch('/.netlify/functions/ai',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body),signal:controller.signal});const b=await r.json().catch(()=>({error:r.status>=500&&r.status!==503?`The site’s AI function stopped before the provider answered (HTTP ${r.status}). Slow models or gateways can exceed the hosting time limit`:'AI functions require a Netlify deployment.'}));if(!r.ok)throw Error(b.error||'Request unavailable.');return b;}finally{clearTimeout(timeout);if(aiController===controller)aiController=null;}
+  try{const r=await fetch(`${apiBase}/.netlify/functions/ai`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body),signal:controller.signal});const b=await r.json().catch(()=>({error:r.status>=500&&r.status!==503?`The site’s AI function stopped before the provider answered (HTTP ${r.status}). Slow models or gateways can exceed the hosting time limit`:'AI functions require a Netlify deployment.'}));if(!r.ok)throw Error(b.error||'Request unavailable.');return b;}finally{clearTimeout(timeout);if(aiController===controller)aiController=null;}
 }
 function selectSnapshot(source,note){
   aiImage=canvasJPEG(source);$('#ai-preview').innerHTML=`<img src="${aiImage}" alt="Selected image to send for review" style="max-width:100%;max-height:160px"><p>${esc(note)}</p>`;$('#upload-consent').checked=false;
@@ -316,7 +318,8 @@ async function boot(){
   setLanguage(state.preferences.lang);simple.applyPreferences();
   route();
   simple.boot();
-  if('serviceWorker' in navigator&&(location.protocol==='https:'||localDev))navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('sw',e.message));
+  if(!isNative&&'serviceWorker' in navigator&&(location.protocol==='https:'||localDev))navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('sw',e.message));
+  onPushTap(()=>{location.hash='/home';});
   try{
     if(cloud){
       authSettings={providers:{}};

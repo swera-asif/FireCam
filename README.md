@@ -39,7 +39,9 @@ After sign-in, FireCam opens as a four-tab app (Home, Alerts, Rooms, Family) wit
 - **Guest mode.** *Try without an account* opens the app with everything saved on the phone.
 - **Accounts, sync and family push (free).** With a Supabase free-tier project connected, email accounts keep rooms, family and alerts in sync across devices; family members join a home with a 6-letter invite code; and every joined phone gets a free Web Push alarm notification even when FireCam is closed, sent by a Netlify function with VAPID keys. Setup steps: [docs-src/SUPABASE-SETUP.md](docs-src/SUPABASE-SETUP.md). Until the keys are added the site runs in local mode.
 
-Everything above runs at zero hosting cost. The Android app (Capacitor) is the next stage.
+- **Android app.** The same app wrapped with Capacitor, plus a foreground service that keeps listening with the screen off, a full-screen alarm notification that rings at alarm volume, and Firebase push for family alerts when the app is closed. Build steps, signing and the free Firebase setup: [docs-src/ANDROID.md](docs-src/ANDROID.md).
+
+Everything above runs at zero hosting cost.
 
 **Project status:** a functional development showcase, not a production monitoring or certified fire-alarm system. Home sensors, remote cameras, incident assessments, notifications and monitoring-centre handoffs are simulated. No emergency calls or messages are sent. Local camera/microphone capture and explicitly requested provider reviews are real.
 
@@ -86,6 +88,8 @@ Output: `showcase/dist/`. GitHub Actions runs syntax, tests, build and redirect 
 | [`showcase/assets/`](showcase/assets/) | Logo, artwork, sample interiors and fonts |
 | [`showcase/netlify/`](showcase/netlify/) | Authenticated AI function and provider adapters |
 | [`showcase/tests/`](showcase/tests/) | Current application tests |
+| [`showcase/android/`](showcase/android/) | Capacitor Android project: listening service, alarm channel, plugin bridge |
+| [`supabase/`](supabase/) | Database schema and row-level security for accounts, sync and sharing |
 | [`docs-src/`](docs-src/) | Architecture, presentation, deployment and asset notes |
 | [`docs/`](docs/) and [`github/`](github/) | Pages redirect output and URL configuration |
 | [`scripts/`](scripts/) | Verification and redirect tooling; historical Worker builder |

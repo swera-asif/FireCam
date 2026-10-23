@@ -53,7 +53,7 @@ test('push function sends to every device of the home and prunes dead subscripti
   const sb=fakeSupabase({subs});const sends=[];
   const webpush={sendNotification:async(sub,payload,opts)=>{sends.push({sub,payload:JSON.parse(payload),opts});if(sub.endpoint==='e2'){const e=Error('gone');e.statusCode=410;throw e;}if(sub.endpoint==='e3'){const e=Error('rate');e.statusCode=429;throw e;}}};
   const r=await handlePush(req(good),{supabase:sb,webpush,now:()=>123});
-  assert.equal(r.status,200);assert.deepEqual(await r.json(),{sent:1,failed:2,removed:1});
+  assert.equal(r.status,200);assert.deepEqual(await r.json(),{sent:1,failed:2,skipped:0,removed:1});
   assert.deepEqual(sb.calls.deleted,['s2']);
   assert.equal(sends[0].payload.title,'Possible smoke in Kitchen');assert.equal(sends[0].payload.url,'/#/home');assert.equal(sends[0].opts.urgency,'high');assert.equal(sends[0].opts.TTL,180);
 });
