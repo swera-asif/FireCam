@@ -36,7 +36,10 @@ After sign-in, FireCam opens as a four-tab app (Home, Alerts, Rooms, Family) wit
 - **Test my alerts.** Rings this phone with the full alert flow and records the last test date. Settings → Advanced can also play an 8-second smoke-alarm sound to check detection on a second phone.
 - **English and Urdu, large-text mode,** 48px buttons and 16px body text. The older simulator, detection lab, voice tools and floor plan live under Settings → Advanced & practice.
 
-Everything above runs in the browser at zero hosting cost. Cross-device sync, push to family phones when the app is closed and the Android app are the next stages.
+- **Guest mode.** *Try without an account* opens the app with everything saved on the phone.
+- **Accounts, sync and family push (free).** With a Supabase free-tier project connected, email accounts keep rooms, family and alerts in sync across devices; family members join a home with a 6-letter invite code; and every joined phone gets a free Web Push alarm notification even when FireCam is closed, sent by a Netlify function with VAPID keys. Setup steps: [docs-src/SUPABASE-SETUP.md](docs-src/SUPABASE-SETUP.md). Until the keys are added the site runs in local mode.
+
+Everything above runs at zero hosting cost. The Android app (Capacitor) is the next stage.
 
 **Project status:** a functional development showcase, not a production monitoring or certified fire-alarm system. Home sensors, remote cameras, incident assessments, notifications and monitoring-centre handoffs are simulated. No emergency calls or messages are sent. Local camera/microphone capture and explicitly requested provider reviews are real.
 

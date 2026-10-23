@@ -7,7 +7,8 @@ import {createAlert,closeAlert,addStep,Escalation,alertSentence,formatWhen,daysS
 import {t,setLanguage,language,locale,languages} from './i18n.js';
 
 export function createSimple(ctx){
-  const {getState,persist,render,toast,dialog,closeDialog,icon,button,esc,confirmation,go}=ctx;
+  const {getState,persist,render,toast,dialog,closeDialog,icon,button,esc,confirmation,go,onAlert=()=>{},cloud=null,getUser=()=>null,isGuest=()=>false}=ctx;
+  let pushOn=false;
   const S=()=>getState();
   const listenState={status:'off',level:0,tone:false};
   let wakeLock=null,siren=new Siren(),escalation=null,vibrateTimer=null,setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};
@@ -27,20 +28,27 @@ export function createSimple(ctx){
 
   // ---- Alerts ------------------------------------------------------------------------------
   const activeAlert=()=>S().alerts.find(a=>a.status==='active');
+  const isReal=kind=>kind==='smoke'||kind==='co';
   function raise({kind,source,room,image=''}){
     if(activeAlert())return null;
     const state=S();
     if(!image&&source==='sound'){const r=state.rooms.find(r=>r.name===room);if(r?.source==='url')image=r.url;}
     const alert=createAlert({room,kind,source,image});
     state.alerts.unshift(alert);state.alerts=state.alerts.slice(0,200);persist();
-    const real=kind==='smoke'||kind==='co';
-    if(real){escalation=new Escalation(alert,{onStage(stage){persist();renderAlertScreen();if(stage==='family')notify('FireCam',t('alert.stage.family'));if(stage==='service'){speak(t('alert.stage.service'),languages[language()].speech);notify('FireCam',t('alert.stage.service'));}}}).start();}
-    siren.start();vibrate();clearInterval(vibrateTimer);vibrateTimer=setInterval(()=>vibrate(),2600);
-    const what=t('what.'+kind);
-    speak(t(kind==='test'?'alert.spoken.test':kind==='co'?'alert.spoken.co':'alert.spoken.smoke',{room}),languages[language()].speech);
-    notify(t(kind==='test'?'alert.title.test':kind==='co'?'alert.title.co':kind==='practice'?'alert.title.practice':'alert.title.smoke',{room}),real?t('alert.heard'):t('alert.manual'));
-    renderAlertScreen();render();
+    startLocalAlarm(alert,{escalate:isReal(kind)});
+    onAlert(alert,'raised');
     return alert;
+  }
+  // Sounds, speech, notification and (optionally) the escalation timers for an active alert on
+  // this device. Remote alerts from a family member's phone ring here too, but only the device
+  // that raised the alert runs the timers.
+  function startLocalAlarm(alert,{escalate}){
+    const {kind,room}=alert;
+    if(escalate){escalation=new Escalation(alert,{onStage(stage){persist();renderAlertScreen();onAlert(alert,'stage');if(stage==='family')notify('FireCam',t('alert.stage.family'));if(stage==='service'){speak(t('alert.stage.service'),languages[language()].speech);notify('FireCam',t('alert.stage.service'));}}}).start();}
+    siren.start();vibrate();clearInterval(vibrateTimer);vibrateTimer=setInterval(()=>vibrate(),2600);
+    speak(t(kind==='test'?'alert.spoken.test':kind==='co'?'alert.spoken.co':'alert.spoken.smoke',{room}),languages[language()].speech);
+    notify(t(kind==='test'?'alert.title.test':kind==='co'?'alert.title.co':kind==='practice'?'alert.title.practice':'alert.title.smoke',{room}),isReal(kind)?t('alert.heard'):t('alert.manual'));
+    renderAlertScreen();render();
   }
   function quiet(){siren.stop();stopVibration();clearInterval(vibrateTimer);vibrateTimer=null;stopSpeaking();}
   function finish(outcome){
@@ -50,6 +58,21 @@ export function createSimple(ctx){
     if(alert.kind==='test')S().lastTest=new Date().toISOString();
     persist();const el=document.querySelector('#alert-screen');if(el?.open)el.close();
     toast(alert.kind==='test'?t('alert.test.done'):t('alert.closed'));render();
+    onAlert(alert,'closed');
+  }
+  // An alert row arrived from the shared home (another family member's device).
+  function incoming(remote){
+    if(!remote?.id)return;
+    const state=S();const mine=state.alerts.find(a=>a.id===remote.id);
+    if(remote.status==='active'){
+      if(mine){if(mine.status==='closed')return;Object.assign(mine,remote);}
+      else{state.alerts.unshift(remote);state.alerts=state.alerts.slice(0,200);if(!activeAlert()||activeAlert()===remote){if(isReal(remote.kind))startLocalAlarm(remote,{escalate:false});}}
+    }else{
+      if(mine&&mine.status==='active'){Object.assign(mine,remote);escalation?.stop();escalation=null;quiet();const el=document.querySelector('#alert-screen');if(el?.open)el.close();toast(t('alert.closed'));}
+      else if(mine)Object.assign(mine,remote);
+      else{state.alerts.unshift(remote);state.alerts.sort((a,b)=>Date.parse(b.time)-Date.parse(a.time));}
+    }
+    persist();renderAlertScreen();render();
   }
   function alertScreenBody(alert){
     const state=S(),p=state.preferences,service=fireService(p),family=state.family.filter(f=>f.role!=='owner').concat(state.family.filter(f=>f.role==='owner'));
@@ -101,8 +124,21 @@ export function createSimple(ctx){
     return `<div class="simple-page"><div class="row between"><h1>${esc(t('rooms.title'))}</h1>${button(`${icon('floor')}<span>${t('rooms.add')}</span>`,'room-add','primary')}</div>${items.length?`<ul class="card-list">${items.map(r=>`<li><div><strong>${esc(r.name)}</strong><small>${esc(t('rooms.'+r.source))}${r.source==='url'?` · ${esc(r.url)}`:''}</small></div>${button(t('rooms.remove'),'room-remove','small',`data-id="${r.id}" aria-label="${esc(t('rooms.remove'))} ${esc(r.name)}"`)}</li>`).join('')}</ul>`:`<p class="empty">${esc(t('rooms.empty'))}</p>`}</div>`;
   }
   function family(){
-    const items=S().family;
-    return `<div class="simple-page"><div class="row between"><h1>${esc(t('family.title'))}</h1>${button(`${icon('users')}<span>${t('family.add')}</span>`,'person-add','primary')}</div>${items.length?`<ul class="card-list">${items.map(f=>`<li><div><strong>${esc(f.name)}</strong><small>${esc(f.role==='owner'?t('family.owner'):t('family.member'))} · ${esc(f.phone)}</small></div><span class="row"><a class="button small" href="${telLink(f.phone)}">${icon('mic')} ${esc(t('family.call'))}</a>${button(t('family.remove'),'person-remove','small plain',`data-id="${f.id}" aria-label="${esc(t('family.remove'))} ${esc(f.name)}"`)}</span></li>`).join('')}</ul>`:`<p class="empty">${esc(t('family.empty'))}</p>`}</div>`;
+    const items=S().family,signedIn=cloud&&getUser();
+    const share=signedIn?`<section class="panel"><h2>${esc(t('share.title'))}</h2><p class="muted">${esc(t('share.sub'))}</p><div class="row">${button(`${icon('users')}<span>${t('share.invite')}</span>`,'invite-create','primary')}${button(t('share.join'),'invite-join','')}</div><div id="members" class="muted small-print">${esc(t('share.loading'))}</div></section>`
+      :`<section class="panel"><h2>${esc(t('share.title'))}</h2><p class="muted">${esc(cloud?t('share.signin'):t('share.unavailable'))}</p>${cloud?`<a class="button" href="#/register">${esc(t('account.create'))}</a>`:''}</section>`;
+    return `<div class="simple-page"><div class="row between"><h1>${esc(t('family.title'))}</h1>${button(`${icon('users')}<span>${t('family.add')}</span>`,'person-add','primary')}</div>${items.length?`<ul class="card-list">${items.map(f=>`<li><div><strong>${esc(f.name)}</strong><small>${esc(f.role==='owner'?t('family.owner'):t('family.member'))} · ${esc(f.phone)}</small></div><span class="row"><a class="button small" href="${telLink(f.phone)}">${icon('mic')} ${esc(t('family.call'))}</a>${button(t('family.remove'),'person-remove','small plain',`data-id="${f.id}" aria-label="${esc(t('family.remove'))} ${esc(f.name)}"`)}</span></li>`).join('')}</ul>`:`<p class="empty">${esc(t('family.empty'))}</p>`}${share}</div>`;
+  }
+  async function fillMembers(){
+    const el=document.querySelector('#members');if(!el||!cloud?.homeId)return;
+    try{const list=await cloud.members();const me=getUser()?.id;el.innerHTML=`<strong>${esc(t('share.members',{n:list.length}))}</strong><br>${list.map(m=>esc((m.display_name||t('family.member'))+(m.user_id===me?' ('+t('family.owner')+')':'')+(m.role==='owner'?' · '+t('share.ownerTag'):''))).join('<br>')}`;}
+    catch{el.textContent='';}
+  }
+  function accountSection(){
+    const user=getUser();
+    if(!cloud)return '';
+    if(!user)return `<section class="panel"><h2>${esc(t('account.title'))}</h2><p class="muted">${esc(isGuest()?t('account.guest'):t('account.signedOut'))}</p><div class="row"><a class="button primary" href="#/register">${esc(t('account.create'))}</a><a class="button" href="#/login">${esc(t('account.signin'))}</a></div></section>`;
+    return `<section class="panel"><h2>${esc(t('account.title'))}</h2><p class="muted">${esc(t('account.signedInAs',{email:user.email||''}))}</p><label class="check"><input type="checkbox" id="push-toggle" ${pushOn?'checked':''} ${cloud.pushAvailable()?'':'disabled'}><span>${esc(t('account.push'))}</span></label><p class="muted small-print">${esc(cloud.pushAvailable()?t('account.pushHelp'):t('account.pushUnavailable'))}</p>${button(t('account.signout'),'logout','')}</section>`;
   }
   function settings(){
     const p=S().preferences;
@@ -116,6 +152,7 @@ export function createSimple(ctx){
       <label class="field">${esc(t('settings.theme'))}${select('theme',[['light',t('settings.theme.light')],['dark',t('settings.theme.dark')]],p.theme)}</label>
       <label class="check"><input type="checkbox" name="largeText" ${p.largeText?'checked':''}><span>${esc(t('settings.largeText'))}</span></label>
       <button class="primary big">${esc(t('settings.save'))}</button></form>
+      ${accountSection()}
       <div class="callout">${esc(t('notice.long'))}</div>
       <section class="panel"><h2>${esc(t('settings.advanced'))}</h2><p class="muted">${esc(t('settings.advanced.sub'))}</p><ul class="link-list">${[['scenarios','settings.practice','fire'],['lab','settings.lab','sensor'],['voice','settings.voice','mic'],['floor','settings.floor','floor'],['history','settings.history','clock']].map(([r,k,i])=>`<li><a href="#/${r}">${icon(i)}<span>${esc(t(k))}</span>${icon('arrow')}</a></li>`).join('')}</ul>${button(`${icon('play')}<span>${t('settings.playAlarm')}</span>`,'play-alarm','')}<p class="muted small-print">${esc(t('settings.playAlarm.help'))}</p>${button(t('settings.reset'),'reset','plain')}</section></div>`;
   }
@@ -157,6 +194,14 @@ export function createSimple(ctx){
       case 'person-remove':{const f=state.family.find(f=>f.id===id);if(f)confirmation(t('family.removeConfirm',{name:f.name}),'','person-remove',id);return true;}
       case 'confirm-person-remove':state.family=state.family.filter(f=>f.id!==id);if(!state.family.some(f=>f.role==='owner')&&state.family[0])state.family[0].role='owner';persist();closeDialog();render();return true;
       case 'play-alarm':playAlarmPattern('T3',8);return true;
+      case 'invite-create':{
+        const code=await cloud.createInvite();
+        const text=t('share.message',{home:state.preferences.home,code,url:location.origin});
+        dialog(t('share.invite'),`<p class="lead">${esc(t('share.codeIntro'))}</p><p class="invite-code" aria-label="${esc(t('share.code'))}">${esc(code)}</p><p class="muted">${esc(t('share.codeHelp'))}</p><div class="row">${navigator.share?button(`${icon('arrow')} ${t('share.send')}`,'invite-share','primary',`data-id="${esc(text)}"`):''}<a class="button" href="${smsLink('',text)}">${esc(t('share.sms'))}</a>${button(t('common.close'),'close')}</div>`);
+        return true;
+      }
+      case 'invite-share':try{await navigator.share({title:'FireCam',text:id});}catch{}return true;
+      case 'invite-join':dialog(t('share.join'),`<form data-form="invite-join"><label class="field">${esc(t('share.code'))}<input name="code" required minlength="6" maxlength="8" autocapitalize="characters" autocomplete="one-time-code" style="text-transform:uppercase;letter-spacing:4px;font-size:22px"></label><p class="muted">${esc(t('share.joinHelp'))}</p><div class="row">${button(t('common.cancel'),'close')}<button class="primary">${esc(t('share.join'))}</button></div></form>`);return true;
       case 'setup-phone':setup.source='phone';render();return true;
       case 'setup-url':setup.source='url';render();return true;
       case 'setup-back':setup.step=Math.max(1,setup.step-1);render();return true;
@@ -180,6 +225,7 @@ export function createSimple(ctx){
       case 'setup-3':setup.name=values.name;setup.phone=values.phone;addPerson({name:values.name,phone:values.phone});addRoom({name:setup.room,source:setup.source,url:setup.url});state.setupDone=true;persist();setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};go('/home');return true;
       case 'room-add':if(values.source==='url'&&!/^https?:\/\//.test((values.url||'').trim()))throw Error(t('setup.1.urlField'));addRoom({name:values.name,source:values.source||'sample',url:values.url});persist();closeDialog();render();return true;
       case 'person-add':addPerson(values);persist();closeDialog();render();toast(t('family.saved'));return true;
+      case 'invite-join':{await cloud.joinHome(values.code);closeDialog();toast(t('share.joined'));ctx.onHomeChanged?.();return true;}
       case 'simple-settings':{
         const custom=(values.customService||'').trim();if(custom&&!normalizePhone(custom))throw Error(t('family.invalid'));
         Object.assign(state.preferences,{home:values.home.trim()||state.preferences.home,address:(values.address||'').trim().slice(0,300),country:countries.includes(values.country)?values.country:'PK',customService:custom,lang:languages[values.lang]?values.lang:'en',theme:values.theme==='dark'?'dark':'light',largeText:!!values.largeText});
@@ -195,8 +241,16 @@ export function createSimple(ctx){
     if(p.listen&&S().setupDone&&!listener.active){try{await listener.start();requestWake();}catch{listenState.status='off';}render();}
     renderAlertScreen();
   }
+  document.addEventListener('change',async e=>{
+    if(e.target.id!=='push-toggle'||!cloud)return;
+    const box=e.target;box.disabled=true;
+    try{if(box.checked){pushOn=await cloud.enablePush();if(!pushOn)toast(t('account.pushDenied'));}else{await cloud.disablePush();pushOn=false;}}
+    catch(err){pushOn=false;toast(err.message);}
+    finally{box.checked=pushOn;box.disabled=false;}
+  });
+  async function refreshPushState(){if(!cloud)return;try{pushOn=!!(await cloud.pushSubscription())&&Notification.permission==='granted';}catch{pushOn=false;}}
   const tabs=[['home','tab.home','home'],['alerts','tab.alerts','fire'],['rooms','tab.rooms','floor'],['family','tab.family','users'],['settings','tab.settings','settings']];
-  return {pages:{home,alerts,rooms,family,settings},setupPage,handleAction,handleSubmit,boot,applyPreferences,tabs,raise,finish,listener,activeAlert,t,
-    onRoute(){/* the alert screen and listening survive navigation on purpose */},
+  return {pages:{home,alerts,rooms,family,settings},setupPage,handleAction,handleSubmit,boot,applyPreferences,tabs,raise,finish,incoming,listener,activeAlert,t,refreshPushState,
+    onRoute(view){if(view==='family')fillMembers();},
     reset(){listener.stop();escalation?.stop();escalation=null;quiet();setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};}};
 }
