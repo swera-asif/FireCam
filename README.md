@@ -26,6 +26,18 @@ Open the live site and select **Register**. Confirm your email, then sign in. Re
 | Detection lab | Inspect an image or camera frame with colour/motion rules; optionally request AI review |
 | Preferences | Change sample home details, theme and reset browser-local demo data |
 
+## The everyday app
+
+After sign-in, FireCam opens as a four-tab app (Home, Alerts, Rooms, Family) with a three-step setup: choose where to listen, name the room, add one phone number.
+
+- **Smoke-alarm sound detection.** With "Use this phone", the phone's microphone listens for the standard smoke-alarm beep pattern (ISO 8201 Temporal-Three) and the carbon-monoxide pattern (Temporal-Four). Analysis runs in an AudioWorklet on the device; no audio is recorded or uploaded. See [`showcase/src/alarm.js`](showcase/src/alarm.js).
+- **Alerts.** A detected pattern opens a full-screen alert with a siren, vibration, a spoken message and a notification, and three large buttons: *It's a false alarm*, *Call fire service* and *Call my family*. Calls and texts use the phone's own dialer and SMS app (`tel:` and `sms:` links), so there is no messaging bill. If nobody responds within 30 seconds the alert moves to the family stage, then to the fire-service prompt.
+- **Fire-service number per country.** Defaults to Rescue 1122 (with 16 as the alternative) for Pakistan; other countries and a custom number are in Settings, along with the home address shown on every alert.
+- **Test my alerts.** Rings this phone with the full alert flow and records the last test date. Settings → Advanced can also play an 8-second smoke-alarm sound to check detection on a second phone.
+- **English and Urdu, large-text mode,** 48px buttons and 16px body text. The older simulator, detection lab, voice tools and floor plan live under Settings → Advanced & practice.
+
+Everything above runs in the browser at zero hosting cost. Cross-device sync, push to family phones when the app is closed and the Android app are the next stages.
+
 **Project status:** a functional development showcase, not a production monitoring or certified fire-alarm system. Home sensors, remote cameras, incident assessments, notifications and monitoring-centre handoffs are simulated. No emergency calls or messages are sent. Local camera/microphone capture and explicitly requested provider reviews are real.
 
 ## Run locally

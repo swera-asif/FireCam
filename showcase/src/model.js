@@ -5,9 +5,13 @@ export const scenarios = {
   uncertain: { title:'Missing evidence', room:'Bedroom', trigger:'Bedroom smoke sensor', temperature:null, smoke:'Reading unavailable', assessment:'Uncertain', reasoning:'The sample camera is obscured and heat data is missing. Missing evidence is not proof of safety.', evidence:'uncertain' }
 };
 export const stages = ['Event received','Evidence collected','Simulated AI assessment','Owner notification','Review','Outcome'];
+export const countries=['PK','IN','BD','AE','SA','GB','EU','US','CA','AU','OTHER'];
 export function initialState() {
   return {
-    version:1, preferences:{home:'The Morgan home',name:'Alex Morgan',theme:'light'},
+    version:2, preferences:{home:'My home',name:'',theme:'light',lang:'en',largeText:false,country:'PK',address:'',customService:'',listen:false},
+    setupDone:false, lastTest:null,
+    rooms:[], family:[], alerts:[],
+    // Practice-mode sample data (incident simulator, floor plan, detection lab).
     contacts:[{id:'owner',name:'Alex Morgan',role:'Homeowner · primary',phone:'+92 300 0000001'},{id:'backup',name:'Sam Taylor',role:'Neighbour · backup',phone:'+92 300 0000002'}],
     incidents:[makeIncident('uncertain', 'sample-uncertain', '2026-10-20T09:12:00.000Z', false)],
     devices:[
@@ -51,8 +55,17 @@ export function advance(incident, contacts) {
   return true;
 }
 const bounded = (s,n=100) => typeof s==='string' && s.length<=n;
+const isoDate=s=>typeof s==='string'&&Number.isFinite(Date.parse(s));
+const validRoom=r=>bounded(r.id,40)&&bounded(r.name,60)&&r.name.trim()&&['phone','url','sample'].includes(r.source)&&bounded(r.url,500)&&(r.source!=='url'||/^https?:\/\//.test(r.url))&&['ok','offline','unknown'].includes(r.status);
+const validPerson=p=>bounded(p.id,40)&&bounded(p.name,100)&&p.name.trim()&&['owner','family'].includes(p.role)&&bounded(p.phone,40)&&normalizePhone(p.phone)!=='';
+const validAlert=a=>bounded(a.id,40)&&isoDate(a.time)&&bounded(a.room,60)&&['smoke','co','test','practice'].includes(a.kind)&&['sound','camera','manual'].includes(a.source)&&typeof a.image==='string'&&a.image.length<=400000&&['active','closed'].includes(a.status)&&['owner','family','service'].includes(a.stage)&&bounded(a.outcome,40)&&Array.isArray(a.steps)&&a.steps.length<=20&&a.steps.every(s=>isoDate(s.time)&&bounded(s.code,40));
 export function validState(v) {
-  return v?.version===1 && bounded(v.preferences?.home) && bounded(v.preferences?.name) && ['light','dark'].includes(v.preferences?.theme)
+  const p=v?.preferences;
+  return v?.version===2 && bounded(p?.home) && p.home.trim() && bounded(p?.name) && ['light','dark'].includes(p?.theme) && ['en','ur'].includes(p?.lang) && typeof p.largeText==='boolean' && typeof p.listen==='boolean'
+    && countries.includes(p.country) && bounded(p.address,300) && bounded(p.customService,20) && (p.customService===''||normalizePhone(p.customService)!=='') && typeof v.setupDone==='boolean' && (v.lastTest===null||isoDate(v.lastTest))
+    && Array.isArray(v.rooms) && v.rooms.length<=20 && v.rooms.every(validRoom) && new Set(v.rooms.map(r=>r.id)).size===v.rooms.length
+    && Array.isArray(v.family) && v.family.length<=10 && v.family.every(validPerson) && v.family.filter(f=>f.role==='owner').length<=1
+    && Array.isArray(v.alerts) && v.alerts.length<=200 && v.alerts.every(validAlert) && v.alerts.filter(a=>a.status==='active').length<=1
     && Array.isArray(v.contacts) && v.contacts.length===2 && ['owner','backup'].every(id=>v.contacts.filter(c=>c.id===id).length===1)
     && v.contacts.every(c=>bounded(c.name)&&bounded(c.role)&&bounded(c.phone,40)&&(c.phone===''||c.phone.startsWith('DEMO-')||normalizePhone(c.phone)!==''))
     && Array.isArray(v.incidents) && v.incidents.length<=100 && new Set(v.incidents.map(i=>i.id)).size===v.incidents.length
@@ -62,10 +75,9 @@ export function validState(v) {
 export function loadState(storage) {
   try {
     const raw=storage.getItem(KEY); if(!raw)return {data:initialState(),warning:''};
-    const data=JSON.parse(raw); if(!validState(data))throw Error();
-    // Older saves used fictional DEMO- identifiers; replace them with the sample numbers.
-    const samples=initialState().contacts;
-    for(const c of data.contacts) if(c.phone.startsWith('DEMO-')) c.phone=samples.find(s=>s.id===c.id)?.phone||'';
+    let data=JSON.parse(raw);
+    if(data?.version===1)data=migrateV1(data);
+    if(!validState(data))throw Error();
     return {data,warning:''};
   }
   catch {return {data:initialState(),warning:'Saved demo data could not be read. Fresh samples are in memory; existing storage has not been deleted.'};}
@@ -84,6 +96,19 @@ export function review(incident,action) {
   incident.timeline.push({time:new Date().toISOString(),text:next.text});
   incident.timeline=incident.timeline.slice(-30);
   return true;
+}
+// Version 1 (demo workspace) → version 2 (everyday app + practice data).
+export function migrateV1(old) {
+  const fresh=initialState(),samples=fresh.contacts;
+  const contacts=(old.contacts||[]).map(c=>({...c,phone:String(c.phone||'').startsWith('DEMO-')?samples.find(s=>s.id===c.id)?.phone||'':c.phone}));
+  const owner=contacts.find(c=>c.id==='owner'),backup=contacts.find(c=>c.id==='backup');
+  const family=[];
+  const sampleOwner=samples.find(s=>s.id==='owner');
+  if(owner&&normalizePhone(owner.phone)&&owner.phone!==sampleOwner.phone)family.push({id:'owner',name:owner.name,phone:owner.phone,role:'owner'});
+  if(backup&&normalizePhone(backup.phone)&&backup.phone!==samples.find(s=>s.id==='backup').phone)family.push({id:'backup',name:backup.name,phone:backup.phone,role:'family'});
+  const home=old.preferences?.home==='The Morgan home'?'My home':old.preferences?.home||'My home';
+  return {...fresh,preferences:{...fresh.preferences,home,name:old.preferences?.name==='Alex Morgan'?'':old.preferences?.name||'',theme:old.preferences?.theme||'light'},
+    contacts:contacts.length===2?contacts:fresh.contacts,incidents:old.incidents||fresh.incidents,devices:old.devices||fresh.devices,family,setupDone:false};
 }
 export function saveState(storage,data) {try{storage.setItem(KEY,JSON.stringify(data));return true;}catch{return false;}}
 export function csv(incidents) {

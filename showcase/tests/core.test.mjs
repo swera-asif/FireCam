@@ -21,7 +21,8 @@ test('phone validation accepts real numbers and rejects short, alphabetic or DEM
   assert.equal(normalizePhone('(020) 7946 0958'),'02079460958');
   for(const bad of ['12345','DEMO-OWNER-001','abc','+1 (555) CALL-NOW','','+123456789012345678'])assert.equal(normalizePhone(bad),'',bad);
   const s=initialState();s.contacts[0].phone='12345';assert.equal(validState(s),false);
-  let memory=JSON.stringify({...initialState(),contacts:[{id:'owner',name:'A',role:'r',phone:'DEMO-OWNER-001'},{id:'backup',name:'B',role:'r',phone:'DEMO-BACKUP-002'}]});
+  const {contacts:_c,...v1}={...initialState(),version:1};
+  let memory=JSON.stringify({...v1,contacts:[{id:'owner',name:'A',role:'r',phone:'DEMO-OWNER-001'},{id:'backup',name:'B',role:'r',phone:'DEMO-BACKUP-002'}]});
   const loaded=loadState({getItem:()=>memory,setItem:(_,v)=>memory=v});
   assert.equal(loaded.warning,'');assert.equal(loaded.data.contacts[0].phone,'+92 300 0000001');
 });
