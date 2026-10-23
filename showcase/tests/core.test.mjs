@@ -85,7 +85,7 @@ const direct={
   xai:{models:{data:[vision('grok-4'),vision('grok-2-image-1212'),vision('grok-3-mini')]},model:'grok-4',url:'https://api.x.ai/v1/chat/completions',tokens:'max_tokens',hidden:['grok-2-image-1212','grok-3-mini']},
   groq:{models:{data:[vision('meta-llama/llama-4-scout-17b-16e-instruct'),vision('llama-3.3-70b-versatile')]},model:'meta-llama/llama-4-scout-17b-16e-instruct',url:'https://api.groq.com/openai/v1/chat/completions',tokens:'max_completion_tokens',hidden:['llama-3.3-70b-versatile']},
   mistral:{models:{data:[vision('pixtral-large-latest',{capabilities:{vision:true}}),vision('pixtral-large-latest',{capabilities:{vision:true}}),vision('codestral-latest',{capabilities:{vision:false}})]},model:'pixtral-large-latest',url:'https://api.mistral.ai/v1/chat/completions',tokens:'max_tokens',stringImage:true,hidden:['codestral-latest']},
-  omniroute:{models:{data:[vision('gh/gpt-4.1'),vision('kr/text-only',{architecture:{input_modalities:['text']}})]},model:'gh/gpt-4.1',url:'https://gateway.example.com/omni/v1/chat/completions',tokens:'max_tokens',baseUrl:'https://gateway.example.com/omni/',hidden:['kr/text-only']}
+  omniroute:{models:{data:[vision('gh/gpt-4.1',{input_modalities:['text','image'],output_modalities:['text']}),vision('kr/text-only',{architecture:{input_modalities:['text']}})]},model:'gh/gpt-4.1',url:'https://gateway.example.com/omni/v1/chat/completions',tokens:'max_tokens',baseUrl:'https://gateway.example.com/omni/',hidden:['kr/text-only']}
 };
 test('each direct provider lists only vision models and sends a correctly shaped image review',async()=>{
   for(const [provider,c] of Object.entries(direct)){
@@ -111,6 +111,23 @@ test('each direct provider lists only vision models and sends a correctly shaped
 });
 test('non-OpenRouter providers always require billing confirmation, even with free-only checked',()=>{
   for(const provider of Object.keys(direct))assert.throws(()=>validate({...request,provider,baseUrl:direct[provider].baseUrl}),/billing/);
+});
+test('OmniRoute lists only models that take images and answer in text',async()=>{
+  // Shapes copied from an OmniRoute v3.8 /v1/models catalog.
+  const data=[
+    {id:'antigravity/gemini-3.8-flash-low',input_modalities:['text','image'],output_modalities:['text'],capabilities:{vision:true}},
+    {id:'zc/glm-4.6v',input_modalities:['text','image'],output_modalities:['text'],capabilities:{vision:true}},
+    {id:'or/legacy-vision',architecture:{input_modalities:['text','image'],output_modalities:['text']}},
+    {id:'xx/flag-only',capabilities:{vision:true}},
+    {id:'aihorde/2DN',type:'image',input_modalities:['text','image'],output_modalities:['image'],capabilities:{}},
+    {id:'antigravity/gemini-3.1-flash-image',type:'image',input_modalities:['text'],output_modalities:['image'],capabilities:{vision:true}},
+    {id:'veo-free/veo',type:'video',input_modalities:['text'],output_modalities:['video'],capabilities:{}},
+    {id:'dva/claude-sonnet-4-6',input_modalities:['text','image'],output_modalities:['text'],capabilities:{vision:false}},
+    {id:'cfp/meta/llama-4-scout-17b-16e-instruct',capabilities:{tool_calling:true}},
+    {id:'gc/grok-4.7',capabilities:{reasoning:true}}
+  ];
+  const listed=(await models('omniroute',request.key,false,async()=>Response.json({data}),'https://gateway.example.com/v1')).map(m=>m.id).sort();
+  assert.deepEqual(listed,['antigravity/gemini-3.8-flash-low','or/legacy-vision','xx/flag-only','zc/glm-4.6v']);
 });
 test('OmniRoute gateway must be a public HTTPS hostname',()=>{
   const omni={...request,provider:'omniroute',billingConfirmed:true};
