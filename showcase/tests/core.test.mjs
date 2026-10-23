@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,validState,loadState,saveState,makeIncident,advance,csv} from '../src/model.js';
+import {initialState,validState,loadState,saveState,makeIncident,advance,csv,normalizePhone,review} from '../src/model.js';
 import {inspectFrame,CuePersistence} from '../src/detector.js';
 import {validate,models,runProvider} from '../netlify/providers.mjs';
 import {handle} from '../netlify/handler.mjs';
@@ -12,8 +12,27 @@ test('three scenarios terminate; advancing again cannot duplicate activity',()=>
     for(let j=0;j<10;j++)advance(i,contacts);
     assert.equal(i.step,5);assert.equal(i.timeline.length,6);
     assert.equal(i.status,kind==='steam'?'Resolved':'Escalated (simulated)');
-    assert.match(i.timeline[3].text,/DEMO-OWNER-001/);
+    assert.match(i.timeline[3].text,/\+92 300 0000001/);
   }
+});
+test('phone validation accepts real numbers and rejects short, alphabetic or DEMO- values',()=>{
+  assert.equal(normalizePhone('+92 300 1234567'),'+923001234567');
+  assert.equal(normalizePhone('0300-1234567'),'03001234567');
+  assert.equal(normalizePhone('(020) 7946 0958'),'02079460958');
+  for(const bad of ['12345','DEMO-OWNER-001','abc','+1 (555) CALL-NOW','','+123456789012345678'])assert.equal(normalizePhone(bad),'',bad);
+  const s=initialState();s.contacts[0].phone='12345';assert.equal(validState(s),false);
+  let memory=JSON.stringify({...initialState(),contacts:[{id:'owner',name:'A',role:'r',phone:'DEMO-OWNER-001'},{id:'backup',name:'B',role:'r',phone:'DEMO-BACKUP-002'}]});
+  const loaded=loadState({getItem:()=>memory,setItem:(_,v)=>memory=v});
+  assert.equal(loaded.warning,'');assert.equal(loaded.data.contacts[0].phone,'+92 300 0000001');
+});
+test('incident review supports acknowledge, escalate and resolve; resolved incidents are final',()=>{
+  const i=makeIncident('fire','x',new Date().toISOString());
+  assert.ok(review(i,'ack'));assert.equal(i.status,'Acknowledged');
+  assert.ok(review(i,'escalate'));assert.equal(i.status,'Escalated (simulated)');assert.match(i.timeline.at(-1).text,/escalated/);
+  assert.equal(review(i,'nonsense'),false);
+  assert.ok(review(i,'resolve'));assert.equal(i.status,'Resolved');
+  assert.equal(review(i,'escalate'),false);assert.equal(i.status,'Resolved');
+  assert.ok(validState({...initialState(),incidents:[i]}));
 });
 test('acknowledged owner does not get no-response handoff; resolution stops workflow',()=>{
   const i=makeIncident('fire','a',new Date().toISOString());i.acknowledged=true;

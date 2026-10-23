@@ -8,7 +8,7 @@ export const stages = ['Event received','Evidence collected','Simulated AI asses
 export function initialState() {
   return {
     version:1, preferences:{home:'The Morgan home',name:'Alex Morgan',theme:'light'},
-    contacts:[{id:'owner',name:'Alex Morgan',role:'Homeowner · primary',phone:'DEMO-OWNER-001'},{id:'backup',name:'Sam Taylor',role:'Neighbour · backup',phone:'DEMO-BACKUP-002'}],
+    contacts:[{id:'owner',name:'Alex Morgan',role:'Homeowner · primary',phone:'+92 300 0000001'},{id:'backup',name:'Sam Taylor',role:'Neighbour · backup',phone:'+92 300 0000002'}],
     incidents:[makeIncident('uncertain', 'sample-uncertain', '2026-10-20T09:12:00.000Z', false)],
     devices:[
       {id:'cam-living',name:'Living room',floor:'Ground floor',kind:'Camera',status:'Online',image:'living.webp',updated:'Sample · 09:40'},
@@ -20,6 +20,17 @@ export function initialState() {
     ]
   };
 }
+// Phone numbers: optional leading +, 7 to 15 digits (ITU E.164 length), spaces, dashes, dots and
+// brackets allowed as separators. Returns the cleaned number or '' when invalid.
+export function normalizePhone(raw) {
+  const text=String(raw??'').trim();
+  if(!/^\+?\(?[0-9][0-9 .()-]*$/.test(text)) return '';
+  const digits=text.replace(/\D/g,'');
+  if(digits.length<7||digits.length>15) return '';
+  return (text.startsWith('+')?'+':'')+digits;
+}
+// HTML pattern attributes compile with the regex v flag, so brackets and dashes inside the class are escaped.
+export const phonePattern='\\+?\\(?[0-9][0-9 .\\(\\)\\-]{5,24}';
 export function makeIncident(kind,id,time,noResponse=true) {
   return {id,kind,time,noResponse,step:0,status:'Active',acknowledged:false,timeline:[{time,text:'Simulated event received'}]};
 }
@@ -43,14 +54,36 @@ const bounded = (s,n=100) => typeof s==='string' && s.length<=n;
 export function validState(v) {
   return v?.version===1 && bounded(v.preferences?.home) && bounded(v.preferences?.name) && ['light','dark'].includes(v.preferences?.theme)
     && Array.isArray(v.contacts) && v.contacts.length===2 && ['owner','backup'].every(id=>v.contacts.filter(c=>c.id===id).length===1)
-    && v.contacts.every(c=>bounded(c.name)&&bounded(c.role)&&bounded(c.phone,40))
+    && v.contacts.every(c=>bounded(c.name)&&bounded(c.role)&&bounded(c.phone,40)&&(c.phone===''||c.phone.startsWith('DEMO-')||normalizePhone(c.phone)!==''))
     && Array.isArray(v.incidents) && v.incidents.length<=100 && new Set(v.incidents.map(i=>i.id)).size===v.incidents.length
     && v.incidents.every(i=>Object.hasOwn(scenarios,i.kind)&&bounded(i.id)&&Number.isFinite(Date.parse(i.time))&&Number.isInteger(i.step)&&i.step>=0&&i.step<=5&&typeof i.noResponse==='boolean'&&typeof i.acknowledged==='boolean'&&['Active','Acknowledged','Resolved','Escalated (simulated)'].includes(i.status)&&Array.isArray(i.timeline)&&i.timeline.length<=30&&i.timeline.every(t=>bounded(t.text,500)&&Number.isFinite(Date.parse(t.time))))
     && Array.isArray(v.devices) && v.devices.length===6 && v.devices.every(d=>bounded(d.id)&&bounded(d.name)&&['Ground floor','First floor'].includes(d.floor)&&['Camera','Smoke sensor','Heat sensor'].includes(d.kind)&&['Online','Offline'].includes(d.status)&&bounded(d.updated)&&(!d.image||['living.webp','kitchen.webp','bedroom.webp'].includes(d.image)));
 }
 export function loadState(storage) {
-  try { const raw=storage.getItem(KEY); if(!raw)return {data:initialState(),warning:''}; const data=JSON.parse(raw); if(!validState(data))throw Error(); return {data,warning:''}; }
+  try {
+    const raw=storage.getItem(KEY); if(!raw)return {data:initialState(),warning:''};
+    const data=JSON.parse(raw); if(!validState(data))throw Error();
+    // Older saves used fictional DEMO- identifiers; replace them with the sample numbers.
+    const samples=initialState().contacts;
+    for(const c of data.contacts) if(c.phone.startsWith('DEMO-')) c.phone=samples.find(s=>s.id===c.id)?.phone||'';
+    return {data,warning:''};
+  }
   catch {return {data:initialState(),warning:'Saved demo data could not be read. Fresh samples are in memory; existing storage has not been deleted.'};}
+}
+// Review actions available from the incident dialog. 'escalate' mirrors the owner → backup →
+// fire-service handoff that the landing page describes; in the demo nothing is contacted.
+export const reviewActions={
+  ack:{status:'Acknowledged',text:'User acknowledged this simulated incident'},
+  escalate:{status:'Escalated (simulated)',text:'User escalated this simulated incident to the backup contact and fire-service handoff; nothing was contacted'},
+  resolve:{status:'Resolved',text:'User resolved this simulated incident; no physical alarm changed'}
+};
+export function review(incident,action) {
+  const next=reviewActions[action];
+  if(!next||incident.status==='Resolved') return false;
+  incident.acknowledged=true;incident.status=next.status;
+  incident.timeline.push({time:new Date().toISOString(),text:next.text});
+  incident.timeline=incident.timeline.slice(-30);
+  return true;
 }
 export function saveState(storage,data) {try{storage.setItem(KEY,JSON.stringify(data));return true;}catch{return false;}}
 export function csv(incidents) {
