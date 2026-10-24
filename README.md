@@ -39,6 +39,8 @@ After sign-in, FireCam opens as a four-tab app (Home, Alerts, Rooms, Family) wit
 - **Guest mode.** *Try without an account* opens the app with everything saved on the phone.
 - **Accounts, sync and family push (free).** With a Supabase free-tier project connected, email accounts keep rooms, family and alerts in sync across devices; family members join a home with a 6-letter invite code; and every joined phone gets a free Web Push alarm notification even when FireCam is closed, sent by a Netlify function with VAPID keys. Setup steps: [docs-src/SUPABASE-SETUP.md](docs-src/SUPABASE-SETUP.md). Until the keys are added the site runs in local mode.
 
+- **Cameras and health checks.** A room can be a Wi‑Fi camera's snapshot link (checked every few minutes, shown as Online/Offline with a last-seen time) or this phone, optionally with its camera adding a picture and an "extra evidence" line to each alert. The home card also flags a low battery while listening and an overdue monthly test, with a reminder notification.
+- **Accessibility.** Lighthouse accessibility scores 100 on the public pages and axe-core reports no WCAG 2.1 AA violations on the app tabs (checked 2026-10-24).
 - **Android app.** The same app wrapped with Capacitor, plus a foreground service that keeps listening with the screen off, a full-screen alarm notification that rings at alarm volume, and Firebase push for family alerts when the app is closed. Build steps, signing and the free Firebase setup: [docs-src/ANDROID.md](docs-src/ANDROID.md).
 
 Everything above runs at zero hosting cost.
