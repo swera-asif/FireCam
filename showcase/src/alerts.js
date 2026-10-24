@@ -25,8 +25,8 @@ export const smsLink=(number,text)=>`sms:${String(number).replace(/[^+\d]/g,'')}
 // Escalation timing (ms). Owner first, then family, then the fire-service prompt.
 export const escalation={owner:30000,family:60000,maxCycles:3};
 
-export function createAlert({room,kind='smoke',source='sound',image='',time=new Date().toISOString(),id=crypto.randomUUID().slice(0,8)}){
-  return {id,time,room,kind,source,image,status:'active',stage:'owner',outcome:'',steps:[{time,code:'detected'}]};
+export function createAlert({room,kind='smoke',source='sound',image='',evidence='',time=new Date().toISOString(),id=crypto.randomUUID().slice(0,8)}){
+  return {id,time,room,kind,source,image,evidence,status:'active',stage:'owner',outcome:'',steps:[{time,code:'detected'}]};
 }
 export function stageAt(alert,elapsedMs){
   if(alert.status!=='active')return alert.stage;
@@ -75,16 +75,27 @@ export function formatWhen(iso,locale='en-GB',now=new Date()){
 }
 export function daysSince(iso,now=new Date()){if(!iso)return null;return Math.max(0,Math.floor((now-new Date(iso))/864e5));}
 
-// Home status card. Returns {level:'safe'|'check'|'alert', reasons:[keys]}.
-export function homeStatus(state,{listening=false,now=new Date()}={}){
+// Home status card. Returns {level:'safe'|'check'|'alert', reasons:[{key,vars}]}.
+// `battery` is {level:0..1, charging} from navigator.getBattery() when available.
+export const TEST_INTERVAL_DAYS=30;
+export function homeStatus(state,{listening=false,battery=null,now=new Date()}={}){
   const active=state.alerts.find(a=>a.status==='active'&&a.kind!=='test'&&a.kind!=='practice');
   if(active)return {level:'alert',alert:active,reasons:[]};
   const reasons=[];
-  if(!state.rooms.length)reasons.push('status.noRooms');
-  if(!state.family.length)reasons.push('status.noFamily');
-  if(state.rooms.some(r=>r.source==='phone')&&!listening)reasons.push('status.notListening');
-  if(state.rooms.some(r=>r.status==='offline'))reasons.push('status.roomOffline');
+  const push=(key,vars={})=>reasons.push({key,vars});
+  if(!state.rooms.length)push('status.noRooms');
+  if(!state.family.length)push('status.noFamily');
+  if(state.rooms.some(r=>r.source==='phone')&&!listening)push('status.notListening');
+  for(const r of state.rooms)if(r.source==='url'&&r.status==='offline')push('status.cameraOffline',{room:r.name});
+  if(listening&&battery&&!battery.charging&&battery.level<=0.15)push('status.battery');
   const days=daysSince(state.lastTest,now);
-  if(days===null||days>30)reasons.push('status.testDue');
+  if(days===null||days>TEST_INTERVAL_DAYS)push('status.testDue');
   return {level:reasons.length?'check':'safe',reasons};
+}
+// Should the app remind the user to test? Once a week at most, only when a test is overdue.
+export function testReminderDue(state,now=new Date()){
+  const days=daysSince(state.lastTest,now);
+  if(days!==null&&days<=TEST_INTERVAL_DAYS)return false;
+  const last=daysSince(state.preferences.lastReminder,now);
+  return last===null||last>=7;
 }

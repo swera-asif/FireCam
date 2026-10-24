@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAlert,closeAlert,stageAt,Escalation,escalation,alertSentence,homeStatus,fireService,telLink,smsLink,daysSince} from '../src/alerts.js';
+import {createAlert,closeAlert,stageAt,Escalation,escalation,alertSentence,homeStatus,testReminderDue,fireService,telLink,smsLink,daysSince} from '../src/alerts.js';
 import {t,setLanguage,missingKeys} from '../src/i18n.js';
 import {initialState,validState,migrateV1,loadState} from '../src/model.js';
 
@@ -31,13 +31,27 @@ test('history reads as a plain sentence in English and Urdu',()=>{
   assert.deepEqual(missingKeys(),[]);
 });
 test('home status: alert beats everything; check lists reasons; safe when set up, listening and tested',()=>{
-  const s=initialState();
-  assert.deepEqual(homeStatus(s).reasons.sort(),['status.noFamily','status.noRooms','status.testDue']);
+  const s=initialState();const keys=r=>r.reasons.map(x=>x.key);
+  assert.deepEqual(keys(homeStatus(s)).sort(),['status.noFamily','status.noRooms','status.testDue']);
   s.rooms.push({id:'r',name:'Kitchen',source:'phone',url:'',status:'ok'});s.family.push({id:'o',name:'Me',phone:'+92 300 1234567',role:'owner'});s.lastTest=new Date().toISOString();
-  assert.equal(homeStatus(s,{listening:false}).reasons[0],'status.notListening');
+  assert.equal(keys(homeStatus(s,{listening:false}))[0],'status.notListening');
   assert.equal(homeStatus(s,{listening:true}).level,'safe');
-  s.lastTest=new Date(Date.now()-40*864e5).toISOString();assert.deepEqual(homeStatus(s,{listening:true}).reasons,['status.testDue']);
+  s.lastTest=new Date(Date.now()-40*864e5).toISOString();assert.deepEqual(keys(homeStatus(s,{listening:true})),['status.testDue']);
+  s.lastTest=new Date().toISOString();
+  s.rooms.push({id:'c',name:'Hall',source:'url',url:'http://cam/snap.jpg',status:'offline'});
+  const r=homeStatus(s,{listening:true,battery:{level:0.1,charging:false}});
+  assert.deepEqual(r.reasons,[{key:'status.cameraOffline',vars:{room:'Hall'}},{key:'status.battery',vars:{}}]);
+  assert.equal(keys(homeStatus(s,{listening:true,battery:{level:0.1,charging:true}})).includes('status.battery'),false,'charging phones are fine');
   s.alerts.push(createAlert({room:'Kitchen'}));assert.equal(homeStatus(s).level,'alert');
+});
+test('monthly test reminder fires when overdue, at most once a week',()=>{
+  const s=initialState();const now=new Date('2026-10-24T10:00:00Z');
+  assert.equal(testReminderDue(s,now),true,'never tested');
+  s.lastTest='2026-10-20T10:00:00Z';assert.equal(testReminderDue(s,now),false);
+  s.lastTest='2026-08-01T10:00:00Z';assert.equal(testReminderDue(s,now),true);
+  s.preferences.lastReminder='2026-10-21T10:00:00Z';assert.equal(testReminderDue(s,now),false,'reminded this week');
+  s.preferences.lastReminder='2026-10-10T10:00:00Z';assert.equal(testReminderDue(s,now),true);
+  assert.ok(validState(s));
 });
 test('fire service number follows country, custom override and tel/sms links are clean',()=>{
   assert.equal(fireService({country:'PK',customService:''}).number,'1122');

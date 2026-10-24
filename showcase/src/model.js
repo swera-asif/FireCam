@@ -56,13 +56,14 @@ export function advance(incident, contacts) {
 }
 const bounded = (s,n=100) => typeof s==='string' && s.length<=n;
 const isoDate=s=>typeof s==='string'&&Number.isFinite(Date.parse(s));
-const validRoom=r=>bounded(r.id,40)&&bounded(r.name,60)&&r.name.trim()&&['phone','url','sample'].includes(r.source)&&bounded(r.url,500)&&(r.source!=='url'||/^https?:\/\//.test(r.url))&&['ok','offline','unknown'].includes(r.status);
+const validRoom=r=>bounded(r.id,40)&&bounded(r.name,60)&&r.name.trim()&&['phone','url','sample'].includes(r.source)&&bounded(r.url,500)&&(r.source!=='url'||/^https?:\/\//.test(r.url))&&['ok','offline','unknown'].includes(r.status)
+  &&(r.camera===undefined||typeof r.camera==='boolean')&&(r.lastSeen===undefined||r.lastSeen===null||isoDate(r.lastSeen));
 const validPerson=p=>bounded(p.id,40)&&bounded(p.name,100)&&p.name.trim()&&['owner','family'].includes(p.role)&&bounded(p.phone,40)&&normalizePhone(p.phone)!=='';
-const validAlert=a=>bounded(a.id,40)&&isoDate(a.time)&&bounded(a.room,60)&&['smoke','co','test','practice'].includes(a.kind)&&['sound','camera','manual'].includes(a.source)&&typeof a.image==='string'&&a.image.length<=400000&&['active','closed'].includes(a.status)&&['owner','family','service'].includes(a.stage)&&bounded(a.outcome,40)&&Array.isArray(a.steps)&&a.steps.length<=20&&a.steps.every(s=>isoDate(s.time)&&bounded(s.code,40));
+const validAlert=a=>bounded(a.id,40)&&isoDate(a.time)&&bounded(a.room,60)&&['smoke','co','test','practice'].includes(a.kind)&&['sound','camera','manual'].includes(a.source)&&typeof a.image==='string'&&a.image.length<=400000&&(a.evidence===undefined||bounded(a.evidence,40))&&['active','closed'].includes(a.status)&&['owner','family','service'].includes(a.stage)&&bounded(a.outcome,40)&&Array.isArray(a.steps)&&a.steps.length<=20&&a.steps.every(s=>isoDate(s.time)&&bounded(s.code,40));
 export function validState(v) {
   const p=v?.preferences;
   return v?.version===2 && bounded(p?.home) && p.home.trim() && bounded(p?.name) && ['light','dark'].includes(p?.theme) && ['en','ur'].includes(p?.lang) && typeof p.largeText==='boolean' && typeof p.listen==='boolean'
-    && countries.includes(p.country) && bounded(p.address,300) && bounded(p.customService,20) && (p.customService===''||normalizePhone(p.customService)!=='') && typeof v.setupDone==='boolean' && (v.lastTest===null||isoDate(v.lastTest))
+    && countries.includes(p.country) && bounded(p.address,300) && bounded(p.customService,20) && (p.lastReminder===undefined||p.lastReminder===null||isoDate(p.lastReminder)) && (p.customService===''||normalizePhone(p.customService)!=='') && typeof v.setupDone==='boolean' && (v.lastTest===null||isoDate(v.lastTest))
     && Array.isArray(v.rooms) && v.rooms.length<=20 && v.rooms.every(validRoom) && new Set(v.rooms.map(r=>r.id)).size===v.rooms.length
     && Array.isArray(v.family) && v.family.length<=10 && v.family.every(validPerson) && v.family.filter(f=>f.role==='owner').length<=1
     && Array.isArray(v.alerts) && v.alerts.length<=200 && v.alerts.every(validAlert) && v.alerts.filter(a=>a.status==='active').length<=1

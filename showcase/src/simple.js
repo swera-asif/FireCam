@@ -3,7 +3,8 @@
 // (simulator, detection lab, voice tools, floor plan) stay reachable from Settings → Advanced.
 import {normalizePhone,phonePattern,countries} from './model.js';
 import {AlarmListener,Siren,vibrate,stopVibration,speak,stopSpeaking,notify,playAlarmPattern} from './alarm.js';
-import {createAlert,closeAlert,addStep,Escalation,alertSentence,formatWhen,daysSince,homeStatus,fireService,fireServices,telLink,smsLink} from './alerts.js';
+import {createAlert,closeAlert,addStep,Escalation,alertSentence,formatWhen,daysSince,homeStatus,testReminderDue,fireService,fireServices,telLink,smsLink} from './alerts.js';
+import {createWatch} from './watch.js';
 import {t,setLanguage,language,locale,languages} from './i18n.js';
 import {isNative,nativeListener,nativeAlarm,onResume} from './native.js';
 
@@ -12,12 +13,25 @@ export function createSimple(ctx){
   let pushOn=false;
   const S=()=>getState();
   const listenState={status:'off',level:0,tone:false};
-  let wakeLock=null,siren=new Siren(),escalation=null,vibrateTimer=null,setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};
+  let wakeLock=null,siren=new Siren(),escalation=null,vibrateTimer=null,setup={step:1,source:'phone',url:'',room:'',name:'',phone:'',camera:false};
+  let battery=null;
+  // ---- Cameras and health checks ---------------------------------------------------------
+  const watch=createWatch({getRooms:()=>S().rooms,
+    onChange(room){persist();const key=room.status==='offline'?'notify.cameraOffline':'notify.cameraBack';notify('FireCam',t(key,{room:room.name}),'firecam-health');if(document.querySelector('.simple-page'))render();},
+    onFrame({frame}){const img=document.querySelector('#watch-preview');if(img&&frame)img.src=frame;}});
+  const cameraRoom=()=>S().rooms.find(r=>r.source==='phone'&&r.camera);
+  async function startCameraWatch(){
+    const el=document.querySelector('#watch-video');if(!el||!cameraRoom()||watch.cameraActive)return;
+    try{await watch.startCamera(el);}catch(e){toast(e.message);}
+    render();
+  }
+  function stopCameraWatch(){watch.stopCamera();}
+  try{navigator.getBattery?.().then(b=>{const update=()=>{battery={level:b.level,charging:b.charging};};update();b.addEventListener('levelchange',()=>{update();if(document.querySelector('.status-card'))render();});b.addEventListener('chargingchange',()=>{update();if(document.querySelector('.status-card'))render();});});}catch{}
 
   // ---- Listening -------------------------------------------------------------------------
   const phoneRoom=()=>S().rooms.find(r=>r.source==='phone')?.name||S().preferences.home;
   const listenerCallbacks={
-    onStatus(s){listenState.status=s==='listening'?'on':s==='permission'?'permission':s==='lost'?'lost':'off';if(s==='lost')toast(t('home.listen.lost'));if(s!=='listening'&&s!=='permission')releaseWake();updateListenUI();},
+    onStatus(s){listenState.status=s==='listening'?'on':s==='permission'?'permission':s==='lost'?'lost':'off';if(s==='lost'){toast(t('home.listen.lost'));notify(t('notify.listenLost'),t('notify.listenLost.body'),'firecam-health');}if(s!=='listening'&&s!=='permission'){releaseWake();stopCameraWatch();}else if(s==='listening')startCameraWatch();updateListenUI();},
     onLevel(l){listenState.level=l.level;listenState.tone=l.tone;const m=document.querySelector('#listen-level');if(m)m.style.width=`${Math.round(l.level*100)}%`;const b=document.querySelector('#listen-beeps');if(b)b.textContent=l.tone?'♪':l.beeps?'·'.repeat(Math.min(l.beeps,8)):'';},
     onAlarm(result){raise({kind:result.kind,source:'sound',room:phoneRoom()});}
   };
@@ -39,14 +53,15 @@ export function createSimple(ctx){
   // ---- Alerts ------------------------------------------------------------------------------
   const activeAlert=()=>S().alerts.find(a=>a.status==='active');
   const isReal=kind=>kind==='smoke'||kind==='co';
-  function raise({kind,source,room,image=''}){
+  function raise({kind,source,room,image='',evidence=''}){
     if(activeAlert())return null;
     const state=S();
-    if(!image&&source==='sound'){const r=state.rooms.find(r=>r.name===room);if(r?.source==='url')image=r.url;}
-    const alert=createAlert({room,kind,source,image});
+    const alert=createAlert({room,kind,source,image,evidence});
     state.alerts.unshift(alert);state.alerts=state.alerts.slice(0,200);persist();
     startLocalAlarm(alert,{escalate:isReal(kind)});
     onAlert(alert,'raised');
+    // Camera evidence arrives a moment later so the siren never waits on a network request.
+    if(!image)watch.evidenceFor(room).then(({image,evidence})=>{if(!image&&!evidence)return;alert.image=image;alert.evidence=evidence;persist();renderAlertScreen();onAlert(alert,'evidence');}).catch(()=>{});
     return alert;
   }
   // Sounds, speech, notification and (optionally) the escalation timers for an active alert on
@@ -94,7 +109,7 @@ export function createSimple(ctx){
     const callService=service.number?`<a class="button big service" href="${telLink(service.number)}" data-action="alert-called-service">${icon('fire')}<span>${t('alert.callService')}</span><small>${esc(service.name)} · ${esc(service.number)}</small></a>`:`<a class="button big service" href="#/settings">${icon('fire')}<span>${t('alert.callService')}</span><small>${t('settings.service')}</small></a>`;
     const test=alert.kind==='test'||alert.kind==='practice';
     return `<div class="alert-head ${alert.kind}"><div class="eyebrow">${esc(alert.kind==='co'?'CO':'FIRECAM')} · ${esc(formatWhen(alert.time,locale()))}</div><h1>${esc(title)}</h1><p>${esc(test?t('alert.manual'):alert.kind==='co'?t('alert.heard.co'):t('alert.heard'))}</p></div>
-      ${alert.image?`<img class="alert-image" src="${esc(alert.image)}" alt="${esc(alert.room)}">`:''}
+      ${alert.image?`<figure class="alert-figure"><img class="alert-image" src="${esc(alert.image)}" alt="${esc(alert.room)}">${alert.evidence&&t('evidence.'+alert.evidence)?`<figcaption>${esc(t('evidence.'+alert.evidence))}</figcaption>`:''}</figure>`:alert.evidence==='clear'||alert.evidence==='obscured'?`<p class="alert-evidence">${esc(t('evidence.'+alert.evidence))}</p>`:''}
       <div class="alert-actions">${button(`${icon('check')}<span>${t('alert.false')}</span>`,'alert-false','big false')}${callService}${callFamily}</div>
       <div class="alert-meta">${test?'':`<p class="stage stage-${alert.stage}" role="status">${esc(t('alert.stage.'+alert.stage))}</p>`}${p.address?`<p><strong>${esc(t('alert.address',{address:p.address}))}</strong></p>`:`<p class="muted">${esc(t('alert.noAddress'))}</p>`}${service.number?`<p>${esc(t('alert.service.number',{name:service.name,number:service.number}))}${service.alt&&!service.custom?` · ${esc(service.alt.name)}: ${esc(service.alt.number)}`:''}</p>`:''}
       <div class="row">${numbers.length?`<a class="button" href="${smsLink(numbers.join(','),smsText)}" data-action="alert-texted">${icon('users')} ${t('alert.textFamily')}</a>`:''}${button(t('alert.safe'),'alert-safe','primary')}</div></div>`;
@@ -111,16 +126,16 @@ export function createSimple(ctx){
   const notice=()=>`<p class="notice-line">${icon('shield')} ${esc(t('notice.short'))}</p>`;
   const sentence=a=>esc(alertSentence(a,t,locale()));
   function home(){
-    const state=S(),status=homeStatus(state,{listening:listener.active}),p=state.preferences;
+    const state=S(),status=homeStatus(state,{listening:listener.active,battery}),p=state.preferences;
     const days=daysSince(state.lastTest);
     const lastTest=days===null?t('home.lastTest.never'):days===0?t('home.lastTest.today'):t('home.lastTest',{days});
     const phoneRoom=state.rooms.find(r=>r.source==='phone');
     const card=status.level==='alert'
       ?button(`<span class="status-label">${esc(t('status.alert',{what:t('what.'+status.alert.kind),room:status.alert.room}))}</span><small>${esc(t('alerts.open'))} →</small>`,'alert-open','status-card alert')
-      :`<div class="status-card ${status.level}" role="status"><span class="status-label">${esc(t('status.'+status.level))}</span>${status.level==='safe'?`<small>${esc(t('status.safe.sub'))}</small>`:`<ul>${status.reasons.map(r=>`<li>${esc(t(r))}</li>`).join('')}</ul>`}</div>`;
-    const listenCard=phoneRoom?`<section class="panel" id="listen-card"><div class="row between"><h2>${esc(phoneRoom.name)}</h2><span class="pill ${listener.active?'online':''}">${esc(listenState.status==='permission'?t('home.listen.permission'):listener.active?t('home.listen.on'):t('home.listen.off'))}</span></div><div class="meter" aria-hidden="true"><div id="listen-level"></div></div><div class="row between"><span id="listen-beeps" class="beeps" aria-hidden="true"></span></div>${button(`${icon('mic')}<span>${listener.active?t('home.listen.stop'):t('home.listen.start')}</span>`,listener.active?'listen-stop':'listen-start','big '+(listener.active?'':'primary'))}<p class="muted small-print">${esc(t('home.listen.help'))}</p></section>`:'';
+      :`<div class="status-card ${status.level}" role="status"><span class="status-label">${esc(t('status.'+status.level))}</span>${status.level==='safe'?`<small>${esc(t('status.safe.sub'))}</small>`:`<ul>${status.reasons.map(r=>`<li>${esc(t(r.key,r.vars))}</li>`).join('')}</ul>`}</div>`;
+    const listenCard=phoneRoom?`<section class="panel" id="listen-card"><div class="row between"><h2>${esc(phoneRoom.name)}</h2><span class="pill ${listener.active?'online':''}">${esc(listenState.status==='permission'?t('home.listen.permission'):listener.active?t('home.listen.on'):t('home.listen.off'))}</span></div><div class="meter" aria-hidden="true"><div id="listen-level"></div></div><div class="row between"><span id="listen-beeps" class="beeps" aria-hidden="true"></span></div>${button(`${icon('mic')}<span>${listener.active?t('home.listen.stop'):t('home.listen.start')}</span>`,listener.active?'listen-stop':'listen-start','big '+(listener.active?'':'primary'))}<p class="muted small-print">${esc(t('home.listen.help'))}</p>${phoneRoom.camera?`<div class="camera-watch"><img id="watch-preview" alt="" ${watch.cameraActive?'':'hidden'}><div><strong>${esc(t('home.camera'))}</strong><p class="muted small-print">${esc(watch.cameraActive?t('home.camera.on'):t('home.camera.off'))}</p>${listener.active&&!watch.cameraActive?button(`${icon('camera')} ${t('home.camera.start')}`,'camera-watch-start','small'):''}</div></div>`:''}</section>`:'';
     const recent=state.alerts.slice(0,3);
-    return `<div class="simple-page">${card}${listenCard}
+    return `<div class="simple-page"><h1 class="sr-only">${esc(t('tab.home'))} · ${esc(p.home)}</h1>${card}${listenCard}
       <div class="chips">${chip('floor',state.rooms.length===1?t('home.room'):t('home.rooms',{n:state.rooms.length}),'#/rooms')}${chip('users',state.family.length===1?t('home.person'):t('home.family',{n:state.family.length}),'#/family')}${chip('clock',lastTest,'')}</div>
       ${button(`${icon('play')}<span>${t('home.test')}</span>`,'test-alerts','big')}
       <section class="panel"><h2>${esc(t('home.recent'))}</h2>${recent.length?`<ul class="plain-list">${recent.map(a=>`<li>${button(sentence(a),'alert-detail','link',`data-id="${a.id}"`)}</li>`).join('')}</ul><a href="#/alerts">${esc(t('home.seeAll'))} →</a>`:`<p class="muted">${esc(t('home.none'))}</p>`}</section>${notice()}</div>`;
@@ -131,8 +146,9 @@ export function createSimple(ctx){
     return `<div class="simple-page"><h1>${esc(t('alerts.title'))}</h1>${items.length?`<ul class="plain-list">${items.map(a=>`<li class="${a.status==='active'?'active':''}">${button(sentence(a),a.status==='active'?'alert-open':'alert-detail','link',`data-id="${a.id}"`)}</li>`).join('')}</ul>`:`<p class="empty">${esc(t('alerts.empty'))}</p>`}${notice()}</div>`;
   }
   function rooms(){
-    const items=S().rooms;
-    return `<div class="simple-page"><div class="row between"><h1>${esc(t('rooms.title'))}</h1>${button(`${icon('floor')}<span>${t('rooms.add')}</span>`,'room-add','primary')}</div>${items.length?`<ul class="card-list">${items.map(r=>`<li><div><strong>${esc(r.name)}</strong><small>${esc(t('rooms.'+r.source))}${r.source==='url'?` · ${esc(r.url)}`:''}</small></div>${button(t('rooms.remove'),'room-remove','small',`data-id="${r.id}" aria-label="${esc(t('rooms.remove'))} ${esc(r.name)}"`)}</li>`).join('')}</ul>`:`<p class="empty">${esc(t('rooms.empty'))}</p>`}</div>`;
+    const items=S().rooms,hasUrl=items.some(r=>r.source==='url');
+    const roomStatus=r=>r.source==='url'?`<span class="pill ${r.status==='ok'?'online':r.status==='offline'?'danger':''}">${esc(r.status==='ok'?t('rooms.online'):r.status==='offline'?t('rooms.offline'):t('rooms.unknown'))}</span>${r.lastSeen?`<small>${esc(t('rooms.lastSeen',{when:formatWhen(r.lastSeen,locale())}))}</small>`:''}`:r.source==='phone'?`<span class="pill ${listener.active?'online':''}">${esc(listener.active?t('home.listen.on'):t('home.listen.off'))}</span>${r.camera?`<small>${esc(t('rooms.camera'))}</small>`:''}`:'';
+    return `<div class="simple-page"><div class="row between"><h1>${esc(t('rooms.title'))}</h1><span class="row">${hasUrl?button(t('rooms.check'),'rooms-check',''):''}${button(`${icon('floor')}<span>${t('rooms.add')}</span>`,'room-add','primary')}</span></div>${items.length?`<ul class="card-list rooms">${items.map(r=>`<li>${r.source==='url'?`<img class="room-thumb" src="${esc(r.url)}${r.url.includes('?')?'&':'?'}t=${Date.now()}" alt="" loading="lazy">`:''}<div><strong>${esc(r.name)}</strong><small>${esc(t('rooms.'+r.source))}${r.source==='url'?` · ${esc(r.url)}`:''}</small><div class="row">${roomStatus(r)}</div></div>${button(t('rooms.remove'),'room-remove','small',`data-id="${r.id}" aria-label="${esc(t('rooms.remove'))} ${esc(r.name)}"`)}</li>`).join('')}</ul>`:`<p class="empty">${esc(t('rooms.empty'))}</p>`}</div>`;
   }
   function family(){
     const items=S().family,signedIn=cloud&&getUser();
@@ -171,17 +187,17 @@ export function createSimple(ctx){
     const step=setup.step;
     const steps=`<div class="eyebrow">${esc(t('setup.step',{n:step}))}</div><div class="progress" aria-hidden="true">${[1,2,3].map(n=>`<span class="${n<=step?'done':''}"></span>`).join('')}</div>`;
     let body='';
-    if(step===1)body=`<h1>${esc(t('setup.1.title'))}</h1><div class="choices">${button(`${icon('mic')}<span>${t('setup.1.phone')}</span><small>${t('setup.1.phone.sub')}</small>`,'setup-phone','choice '+(setup.source==='phone'?'selected':''))}${button(`${icon('camera')}<span>${t('setup.1.url')}</span><small>${t('setup.1.url.sub')}</small>`,'setup-url','choice '+(setup.source==='url'?'selected':''))}</div>${setup.source==='url'?`<form data-form="setup-1"><label class="field">${esc(t('setup.1.urlField'))}<input name="url" type="url" required maxlength="500" value="${esc(setup.url)}" placeholder="http://192.168.1.20/snapshot.jpg"></label><button class="primary big">${esc(t('setup.next'))}</button></form>`:`<p class="muted">${esc(t('setup.permission'))}</p><form data-form="setup-1"><button class="primary big">${esc(t('setup.next'))}</button></form>`}`;
+    if(step===1)body=`<h1>${esc(t('setup.1.title'))}</h1><div class="choices">${button(`${icon('mic')}<span>${t('setup.1.phone')}</span><small>${t('setup.1.phone.sub')}</small>`,'setup-phone','choice '+(setup.source==='phone'?'selected':''),`aria-pressed="${setup.source==='phone'}"`)}${button(`${icon('camera')}<span>${t('setup.1.url')}</span><small>${t('setup.1.url.sub')}</small>`,'setup-url','choice '+(setup.source==='url'?'selected':''),`aria-pressed="${setup.source==='url'}"`)}</div>${setup.source==='url'?`<form data-form="setup-1"><label class="field">${esc(t('setup.1.urlField'))}<input name="url" type="url" required maxlength="500" value="${esc(setup.url)}" placeholder="http://192.168.1.20/snapshot.jpg"></label><button class="primary big">${esc(t('setup.next'))}</button></form>`:`<p class="muted">${esc(t('setup.permission'))}</p><form data-form="setup-1"><label class="check"><input type="checkbox" name="camera" ${setup.camera?'checked':''}><span>${esc(t('rooms.camera'))}</span></label><button class="primary big">${esc(t('setup.next'))}</button></form>`}`;
     if(step===2)body=`<h1>${esc(t('setup.2.title'))}</h1><form data-form="setup-2"><label class="field">${esc(t('setup.2.field'))}<input name="room" required maxlength="60" value="${esc(setup.room)}" placeholder="${esc(t('setup.2.example'))}" autofocus></label><div class="row">${button(t('setup.back'),'setup-back')}<button class="primary big">${esc(t('setup.next'))}</button></div></form>`;
     if(step===3)body=`<h1>${esc(t('setup.3.title'))}</h1><p class="muted">${esc(t('setup.3.sub'))}</p><form data-form="setup-3"><label class="field">${esc(t('family.name'))}<input name="name" required maxlength="100" value="${esc(setup.name)}"></label><label class="field">${esc(t('family.phone'))}<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="25" pattern="${phonePattern}" value="${esc(setup.phone)}" placeholder="+92 300 1234567"><small>${esc(t('family.phoneHelp'))}</small></label><div class="row">${button(t('setup.back'),'setup-back')}<button class="primary big">${esc(t('setup.done'))}</button></div></form>`;
     return `<main id="main" class="setup container"><div class="setup-card">${steps}${body}<div class="row between setup-foot">${button(t('setup.skip'),'setup-skip','plain')}<small>${esc(t('notice.short'))}</small></div></div></main>`;
   }
 
   // ---- Actions -------------------------------------------------------------------------------
-  function addRoom({name,source,url=''}){const state=S();if(state.rooms.length>=20)throw Error('Too many rooms.');if(source==='phone'&&state.rooms.some(r=>r.source==='phone'))source='sample';state.rooms.push({id:crypto.randomUUID().slice(0,8),name:name.trim().slice(0,60),source,url:source==='url'?url.trim():'',status:'ok'});}
+  function addRoom({name,source,url='',camera=false}){const state=S();if(state.rooms.length>=20)throw Error('Too many rooms.');if(source==='phone'&&state.rooms.some(r=>r.source==='phone'))source='sample';state.rooms.push({id:crypto.randomUUID().slice(0,8),name:name.trim().slice(0,60),source,url:source==='url'?url.trim():'',status:source==='url'?'unknown':'ok',camera:source==='phone'&&!!camera,lastSeen:null});if(source==='url')watch.checkAll().then(()=>{persist();if(document.querySelector('.rooms'))render();});}
   function addPerson({name,phone}){const state=S(),clean=normalizePhone(phone);if(!clean)throw Error(t('family.invalid'));if(state.family.length>=10)throw Error('Too many people.');state.family.push({id:crypto.randomUUID().slice(0,8),name:name.trim().slice(0,100),phone:String(phone).trim().replace(/\s+/g,' ').slice(0,25),role:state.family.some(f=>f.role==='owner')?'family':'owner'});}
   function applyPreferences(){const p=S().preferences;setLanguage(p.lang);document.documentElement.lang=p.lang;document.documentElement.dir=languages[p.lang].dir;document.documentElement.dataset.text=p.largeText?'large':'';document.documentElement.dataset.theme=p.theme;}
-  function roomForm(){return `<form data-form="room-add"><label class="field">${esc(t('setup.2.field'))}<input name="name" required maxlength="60" placeholder="${esc(t('setup.2.example'))}"></label><label class="check"><input type="radio" name="source" value="phone" ${S().rooms.some(r=>r.source==='phone')?'':'checked'}><span>${esc(t('rooms.phone'))}</span></label><label class="check"><input type="radio" name="source" value="url" ${S().rooms.some(r=>r.source==='phone')?'checked':''}><span>${esc(t('rooms.url'))}</span></label><label class="field">${esc(t('setup.1.urlField'))}<input name="url" type="url" maxlength="500" placeholder="http://192.168.1.20/snapshot.jpg"></label><div class="row">${button(t('common.cancel'),'close')}<button class="primary">${esc(t('common.save'))}</button></div></form>`;}
+  function roomForm(){const hasPhone=S().rooms.some(r=>r.source==='phone');return `<form data-form="room-add"><label class="field">${esc(t('setup.2.field'))}<input name="name" required maxlength="60" placeholder="${esc(t('setup.2.example'))}"></label><fieldset class="choices-inline"><legend class="eyebrow">${esc(t('setup.1.title'))}</legend>${hasPhone?'':`<label class="check"><input type="radio" name="source" value="phone" checked><span>${esc(t('rooms.phone'))}</span></label><label class="check"><input type="checkbox" name="camera"><span>${esc(t('rooms.camera'))}</span></label>`}<label class="check"><input type="radio" name="source" value="url" ${hasPhone?'checked':''}><span>${esc(t('rooms.url'))}</span></label></fieldset><label class="field">${esc(t('setup.1.urlField'))}<input name="url" type="url" maxlength="500" placeholder="http://192.168.1.20/snapshot.jpg"></label><div class="row">${button(t('common.cancel'),'close')}<button class="primary">${esc(t('common.save'))}</button></div></form>`;}
   function personForm(){return `<form data-form="person-add"><label class="field">${esc(t('family.name'))}<input name="name" required maxlength="100"></label><label class="field">${esc(t('family.phone'))}<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="25" pattern="${phonePattern}" placeholder="+92 300 1234567"><small>${esc(t('family.phoneHelp'))}</small></label><div class="row">${button(t('common.cancel'),'close')}<button class="primary">${esc(t('common.save'))}</button></div></form>`;}
 
   async function handleAction(action,id){
@@ -199,6 +215,8 @@ export function createSimple(ctx){
       case 'alert-add-family':{const el=document.querySelector('#alert-screen');if(el?.open)el.close();quiet();return true;}
       case 'alert-detail':{const a=state.alerts.find(a=>a.id===id);if(!a)return true;if(a.status==='active'){renderAlertScreen();return true;}dialog(t('alerts.title'),`<p class="lead">${sentence(a)}</p>${a.image?`<img class="alert-image" src="${esc(a.image)}" alt="">`:''}<ol class="timeline">${a.steps.map(s=>`<li>${esc(stepText(s.code))}<small>${esc(formatWhen(s.time,locale()))}</small></li>`).join('')}</ol>${button(t('common.close'),'close')}`);return true;}
       case 'room-add':dialog(t('rooms.add'),roomForm());return true;
+      case 'rooms-check':await watch.checkAll();persist();render();toast(t('rooms.checked'));return true;
+      case 'camera-watch-start':await startCameraWatch();return true;
       case 'room-remove':{const r=state.rooms.find(r=>r.id===id);if(r)confirmation(t('rooms.removeConfirm',{room:r.name}),'','room-remove',id);return true;}
       case 'confirm-room-remove':state.rooms=state.rooms.filter(r=>r.id!==id);persist();closeDialog();render();toast(t('rooms.removed'));return true;
       case 'person-add':dialog(t('family.add'),personForm());return true;
@@ -230,11 +248,11 @@ export function createSimple(ctx){
     switch(kind){
       case 'setup-1':
         if(setup.source==='url'){setup.url=values.url.trim();if(!/^https?:\/\//.test(setup.url))throw Error(t('setup.1.urlField'));}
-        else{try{await listener.start(setup.room||'');state.preferences.listen=true;requestWake();}catch(e){toast(e.message);}if(globalThis.Notification?.permission==='default')Notification.requestPermission().catch(()=>{});}
+        else{setup.camera=!!values.camera;try{await listener.start(setup.room||'');state.preferences.listen=true;requestWake();}catch(e){toast(e.message);}if(globalThis.Notification?.permission==='default')Notification.requestPermission().catch(()=>{});}
         setup.step=2;render();return true;
       case 'setup-2':setup.room=values.room.trim();if(!setup.room)throw Error(t('setup.2.field'));setup.step=3;render();return true;
-      case 'setup-3':setup.name=values.name;setup.phone=values.phone;addPerson({name:values.name,phone:values.phone});addRoom({name:setup.room,source:setup.source,url:setup.url});state.setupDone=true;persist();setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};go('/home');return true;
-      case 'room-add':if(values.source==='url'&&!/^https?:\/\//.test((values.url||'').trim()))throw Error(t('setup.1.urlField'));addRoom({name:values.name,source:values.source||'sample',url:values.url});persist();closeDialog();render();return true;
+      case 'setup-3':setup.name=values.name;setup.phone=values.phone;addPerson({name:values.name,phone:values.phone});addRoom({name:setup.room,source:setup.source,url:setup.url,camera:setup.camera});state.setupDone=true;persist();setup={step:1,source:'phone',url:'',room:'',name:'',phone:'',camera:false};go('/home');startCameraWatch();watch.start();return true;
+      case 'room-add':if(values.source==='url'&&!/^https?:\/\//.test((values.url||'').trim()))throw Error(t('setup.1.urlField'));addRoom({name:values.name,source:values.source||'sample',url:values.url,camera:!!values.camera});persist();closeDialog();render();startCameraWatch();return true;
       case 'person-add':addPerson(values);persist();closeDialog();render();toast(t('family.saved'));return true;
       case 'invite-join':{await cloud.joinHome(values.code);closeDialog();toast(t('share.joined'));ctx.onHomeChanged?.();return true;}
       case 'simple-settings':{
@@ -253,6 +271,11 @@ export function createSimple(ctx){
     renderAlertScreen();
     await checkPendingAlarm();
     onResume(()=>{checkPendingAlarm();render();});
+    // Health: camera reachability every 5 minutes while the app is open, and a monthly test reminder.
+    if(S().setupDone){
+      watch.start();
+      if(testReminderDue(S())){S().preferences.lastReminder=new Date().toISOString();persist();notify(t('notify.testDue'),t('notify.testDue.body'),'firecam-health');}
+    }
   }
   document.addEventListener('change',async e=>{
     if(e.target.id!=='push-toggle'||!cloud)return;
@@ -265,5 +288,6 @@ export function createSimple(ctx){
   const tabs=[['home','tab.home','home'],['alerts','tab.alerts','fire'],['rooms','tab.rooms','floor'],['family','tab.family','users'],['settings','tab.settings','settings']];
   return {pages:{home,alerts,rooms,family,settings},setupPage,handleAction,handleSubmit,boot,applyPreferences,tabs,raise,finish,incoming,listener,activeAlert,t,refreshPushState,
     onRoute(view){if(view==='family')fillMembers();},
-    reset(){listener.stop();escalation?.stop();escalation=null;quiet();setup={step:1,source:'phone',url:'',room:'',name:'',phone:''};}};
+    watch,
+    reset(){listener.stop();escalation?.stop();escalation=null;quiet();watch.stop();watch.stopCamera();setup={step:1,source:'phone',url:'',room:'',name:'',phone:'',camera:false};}};
 }

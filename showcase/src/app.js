@@ -60,7 +60,7 @@ function syncStop(){synced=false;lastDoc='';clearTimeout(syncTimer);cloud?.unwat
 async function onAlertEvent(alert,event){
   if(!cloud||!synced)return;
   try{await cloud.putAlert(alert);}catch(e){console.warn('alert sync',e.message);}
-  if(alert.kind!=='smoke'&&alert.kind!=='co')return;
+  if(alert.kind!=='smoke'&&alert.kind!=='co'||event==='evidence')return;
   if(event==='raised'||(event==='stage'&&alert.stage==='family')){
     const what=t('what.'+alert.kind);
     try{await cloud.notifyFamily({title:t('status.alert',{what,room:alert.room}),text:event==='raised'?t('alert.heard'):t('alert.stage.family'),tag:'firecam-'+alert.id,url:'/#/home',alertId:alert.id,lang:state.preferences.lang});}catch(e){console.warn('push',e.message);}

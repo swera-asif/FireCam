@@ -2,7 +2,7 @@
 // merged back in. Pure functions; the network side is in cloud.js.
 export const syncedKeys=['preferences','rooms','family','lastTest','setupDone'];
 // Per-device preferences are never overwritten by another device.
-const deviceOnly=['theme','lang','largeText','listen'];
+const deviceOnly=['theme','lang','largeText','listen','lastReminder'];
 
 export function pickDoc(state){
   const doc={};
